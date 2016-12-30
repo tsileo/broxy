@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Broxy</title>
+    <link rel="stylesheet" href="https://unpkg.com/purecss@0.6.1/build/pure-min.css" integrity="sha384-CCTZv2q9I9m3UOxRLaJneXrrqKwUNOzZ6NGEUMwHtShDJ+nCoiXJCAgi05KfkLGY" crossorigin="anonymous">
+    <style>
+      body { padding: 20px; }
+      h3 small { color: #555; }
+    </style>
+  </head>
+  <body>
+  <h1>Broxy</h1>
+  <table class="pure-table">
+    <thead><tr><th>Reqs</th><th>Uptime</th></tr></thead>
+    <tr><td>{{ .server.reqs }}</td><td>{{ .server.uptime }}</td></tr>
+  </table>
+  <h2>Apps</h2>
+  {{ range .apps }}
+  <h3>{{ .Name }} <small>{{ .ID }}</small></h3>
+   <div class="pure-g">
+   <div class="pure-u-1-4">
+  <h4>Stats</h4>
+  <table class="pure-table">
+    <thead><tr><th>Reqs</th><th>Written</th></tr></thead>
+    <tr><td>{{ .Reqs }}</td><td>{{ .Written }}</td></tr>
+  </table>
+
+  <h4>Cache</h4>
+  <table class="pure-table">
+    <thead><tr><th>Hit</th><th>Miss</th><th>Total</th></tr></thead>
+    <tr><td>{{ .CacheHit }}</td><td>{{ .CacheMiss }}</td><td>{{ .CacheTotal }}</td></tr>
+  </table>
+  </div>
+
+  <div class="pure-u-1-4">
+  <h4>Top Status</h4>
+  <table class="pure-table">
+  <thead><tr><th>Status</th><th>Reqs</th></tr></thead>
+  {{ range .TopStatus }}
+  <tr><td>{{ .Key }}</td><td>{{ .Value }}</td></tr>
+  {{ end }}
+  </table>
+  </div>
+
+  <div class="pure-u-1-4">
+  <h4>Top Path</h4>
+  <table class="pure-table">
+  <thead><tr><th>Path</th><th>Reqs</th></tr></thead>
+  {{ range .TopPath }}
+  <tr><td>{{ .Key }}</td><td>{{ .Value }}</td></tr>
+  {{ end }}
+  </table>
+  </div>
+
+  <div class="pure-u-1-4">
+  <h4>Referer</h4>
+  <table class="pure-table">
+  <thead><tr><th>Referer</th><th>Reqs</th></tr></thead>
+  {{ range .TopReferer }}
+  <tr><td>{{ .Key }}</td><td>{{ .Value }}</td></tr>
+  {{ end }}
+  </table>
+  </div>
+
+  </div>
+
+  {{ end }}
+
+  </body>
+</html>
