@@ -534,8 +534,6 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		resp.Header.Set("X-Cache", "MISS")
 	}
 
-	// resp.Header.Set("Server", serverName)
-
 	return resp, nil
 }
 
@@ -750,7 +748,7 @@ func main() {
 			authSucceed = true
 		} else {
 			// Check for brute force
-			if p.defender.Banned(r.RemoteAddr) {
+			if banned, _ := p.defender.Banned(r.RemoteAddr); banned {
 				w.WriteHeader(http.StatusTooManyRequests)
 				return
 			}
