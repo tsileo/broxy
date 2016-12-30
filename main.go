@@ -709,10 +709,6 @@ func main() {
 			w.Write([]byte(http.StatusText(http.StatusNotFound)))
 
 		}
-		if p.defender.Banned(r.RemoteAddr) {
-			w.WriteHeader(http.StatusTooManyRequests)
-			return
-		}
 
 		if r.URL.Path == "/_broxy_ui" {
 			t, err := template.New("ui.html").ParseFiles("ui.html")
