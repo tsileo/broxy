@@ -89,8 +89,10 @@ type Proxy struct {
 	startedAt time.Time
 	reqs      uint64
 
-	cache    *cache.Cache
-	defender *defender.Defender
+	cache *cache.Cache
+
+	authDefender *defender.Defender // brute force protection
+	defender     *defender.Defender
 
 	quit          chan struct{}
 	hostWhitelist map[string]bool
@@ -599,8 +601,16 @@ func main() {
 		quit:          make(chan struct{}),
 		router:        mux.NewRouter(),
 		hostWhitelist: map[string]bool{},
-		defender:      defender.New(10, 30*time.Second, 45*time.Second),
+		// 10 fails authentication in 1 hour will cause 12 hours ban
+		authDefender: defender.New(10, 60*time.Minute, 12*60*time.Minute),
+		// more than 50 reqs/s for 5min will cause a 12 hours ban
+		defender: defender.New(15000, 300*time.Second, 12*60*time.Minute),
 	}
+
+	q1 := make(chan struct{})
+	go p.authDefender.CleanupTask(q1)
+	q2 := make(chan struct{})
+	go p.defender.CleanupTask(q2)
 
 	con := pool.Get()
 	if _, err := con.Do("PING"); err != nil {
@@ -701,6 +711,12 @@ func main() {
 
 		}()
 
+		if banned, _ := p.defender.Banned(r.RemoteAddr); banned {
+			// TODO(tsileo): log the ban in redis
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+
 		if !appOk {
 			// The app is not found
 			w.WriteHeader(http.StatusNotFound)
@@ -748,7 +764,8 @@ func main() {
 			authSucceed = true
 		} else {
 			// Check for brute force
-			if banned, _ := p.defender.Banned(r.RemoteAddr); banned {
+			if banned, _ := p.authDefender.Banned(r.RemoteAddr); banned {
+				// TODO(tsileo): log the ban in redis
 				w.WriteHeader(http.StatusTooManyRequests)
 				return
 			}
