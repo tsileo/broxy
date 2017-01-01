@@ -134,17 +134,21 @@ func (p *Proxy) hostPolicy() autocert.HostPolicy {
 }
 
 type App struct {
-	ID                     string            `yaml:"-"`
-	Name                   string            `yaml:"name"`
-	ServeStats             bool              `yaml:"serve_stats"`
-	Domains                []string          `yaml:"domains"`
-	Proxy                  string            `yaml:"proxy"`
+	ID         string   `yaml:"-"`
+	Name       string   `yaml:"name"`
+	ServeStats bool     `yaml:"serve_stats"`
+	Domains    []string `yaml:"domains"`
+
+	Proxy string `yaml:"proxy"`
+	Path  string `yaml:"path"`
+
 	Auth                   *Auth             `yaml:"auth"`
 	Cache                  *Cache            `yaml:"cache"`
 	DisableSecurityHeaders bool              `yaml:"disable_security_headers"`
 	AddHeaders             map[string]string `yaml:"add_headers"`
 
 	rproxy *httputil.ReverseProxy
+	static http.Handler
 }
 
 type topStats []struct {
@@ -305,6 +309,9 @@ func open(p string) (*App, error) {
 	}
 	if err := app.Cache.Init(); err != nil {
 		panic(err)
+	}
+	if app.Path != "" {
+		app.static = http.FileServer(http.Dir(app.Path))
 	}
 	if app.Proxy != "" {
 		target, err := url.Parse(app.Proxy)
@@ -632,8 +639,16 @@ func main() {
 		host := r.Host
 		ourl := r.URL.String()
 		// FIXME(tsileo): only one config file
-		// FIXME(tsileo): only keep the referer if the host is not in app.Domains
-		referer := r.Header.Get("Referer")
+		referer := ""
+		if oreferer := r.Header.Get("Referer"); oreferer != "" {
+			uref, err := url.Parse(oreferer)
+			if err == nil {
+				if uref.Host != r.Host {
+					referer = oreferer
+				}
+			}
+		}
+
 		ua := r.Header.Get("User-Agent")
 		w := &responseWriter{
 			app:    app,
@@ -711,9 +726,13 @@ func main() {
 
 		}()
 
-		if banned, _ := p.defender.Banned(r.RemoteAddr); banned {
+		if client, ok := p.defender.Client(r.RemoteAddr); ok && client.Banned() {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if banned := p.defender.Inc(r.RemoteAddr); banned {
 			// TODO(tsileo): log the ban in redis
-			w.WriteHeader(http.StatusTooManyRequests)
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 
@@ -722,6 +741,12 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte(http.StatusText(http.StatusNotFound)))
 
+		}
+
+		if app.static != nil {
+			// TODO(tsileo): caching for static file?
+			app.static.ServeHTTP(w, r)
+			return
 		}
 
 		if r.URL.Path == "/_broxy_ui" {
@@ -760,16 +785,21 @@ func main() {
 		// FIXME(tsileo): what to do about the Set-Cookie header and caching?
 
 		// First handle auth
+		client, ok := p.authDefender.Client(r.RemoteAddr)
+		if ok && client.Banned() {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
 		if app.authFunc(r) {
 			authSucceed = true
 		} else {
 			// Check for brute force
-			if banned, _ := p.authDefender.Banned(r.RemoteAddr); banned {
-				// TODO(tsileo): log the ban in redis
-				w.WriteHeader(http.StatusTooManyRequests)
+			if banned := p.authDefender.Inc(r.RemoteAddr); banned {
+				// FIXME(tsileo): log the ban in redis
+				w.WriteHeader(http.StatusForbidden)
 				return
 			}
-
 			w.Header().Set("WWW-Authenticate", `Basic realm="`+app.Name+`"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
