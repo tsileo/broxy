@@ -36,6 +36,14 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// TODO(tsileo):
+// - [ ] dynamic image resizing for static image
+// - [ ] PaaS like for static content assuming dns *.domain.com points to server
+// - [ ] Support creating new app via uploading zip app + broxy.yaml (on the same handler as stats)
+// - [ ] Lua app support (import from BlobStash, this feature will get removed in blobstash) (via a plugin?)
+// - [ ] Single file config
+// - [ ] Plugin support (for serving BlobStash FS?)
+
 type Interval int
 
 const (
@@ -624,8 +632,6 @@ func main() {
 		panic(err)
 	}
 	con.Close()
-
-	// FIXME(tsileo): handle static file
 
 	// Bind to the NotFoundHandler to catch all the requests
 	// TODO(tsileo): make the rate limit configurable
