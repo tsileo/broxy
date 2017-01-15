@@ -37,6 +37,7 @@ import (
 )
 
 // TODO(tsileo):
+// - [ ] IMPORTANT make email mandatory for LE config
 // - [ ] dynamic image resizing for static image
 // - [ ] PaaS like for static content assuming dns *.domain.com points to server
 // - [ ] Support creating new app via uploading zip app + broxy.yaml (on the same handler as stats)
@@ -80,6 +81,56 @@ var (
 	pool       *redis.Pool
 	serverName = "Broxy"
 )
+
+var tmpl = template.Must(template.New("main").Parse(`
+<!doctype html><meta charset=utf-8>
+<meta name="go-import" content="{{.ImportPrefix}} {{.VCS}} {{.RepoRoot}}">
+<meta http-equiv="refresh" content="0; url=https://godoc.org/{{.URL}}">
+<p>Redirecting to docs at <a href="https://godoc.org/{{.URL}}">godoc.org/{{.URL}}</a>...</p>
+`))
+
+// Remote import path config (https://golang.org/cmd/go/#hdr-Remote_import_paths)
+type GoRedirector struct {
+	ImportPrefix string `yaml:"import_prefix"`
+	VCS          string `yaml:"vcs"`
+	RepoRoot     string `yaml:"repo_root"`
+}
+
+func (gr *GoRedirector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r.URL.Host = r.Host
+	u := r.URL.String()[2:] // Remove the `//`
+	d := &goRedirectorData{gr, u}
+	var buf bytes.Buffer
+	err := tmpl.Execute(&buf, d)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Write(buf.Bytes())
+}
+
+func (gr *GoRedirector) Check(r *http.Request) bool {
+	r.URL.Host = r.Host
+	fmt.Printf("%v %v", r.URL.String()[:2], gr.ImportPrefix)
+	return strings.HasPrefix(r.URL.String()[2:], gr.ImportPrefix)
+}
+
+type goRedirectorData struct {
+	*GoRedirector
+	URL string
+}
+
+type goRedirectors []*GoRedirector
+
+func (grs goRedirectors) CheckAndServe(w http.ResponseWriter, r *http.Request) bool {
+	for _, gr := range grs {
+		if gr.Check(r) {
+			gr.ServeHTTP(w, r)
+			return true
+		}
+	}
+	return false
+}
 
 // secureCompare performs a constant time compare of two strings to limit timing attacks.
 func secureCompare(given string, actual string) bool {
@@ -147,8 +198,9 @@ type App struct {
 	ServeStats bool     `yaml:"serve_stats"`
 	Domains    []string `yaml:"domains"`
 
-	Proxy string `yaml:"proxy"`
-	Path  string `yaml:"path"`
+	GoRedirectors goRedirectors `yaml:"go_redirectors"`
+	Proxy         string        `yaml:"proxy"`
+	Path          string        `yaml:"path"`
 
 	Auth                   *Auth             `yaml:"auth"`
 	Cache                  *Cache            `yaml:"cache"`
@@ -747,6 +799,14 @@ func main() {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte(http.StatusText(http.StatusNotFound)))
 
+		}
+
+		fmt.Printf("apps=%+v", app)
+		if app.GoRedirectors != nil {
+			fmt.Printf("grs")
+			if ok := app.GoRedirectors.CheckAndServe(w, r); ok {
+				return
+			}
 		}
 
 		if app.static != nil {
