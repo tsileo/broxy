@@ -111,7 +111,6 @@ func (gr *GoRedirector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (gr *GoRedirector) Check(r *http.Request) bool {
 	r.URL.Host = r.Host
-	fmt.Printf("%v %v", r.URL.String()[:2], gr.ImportPrefix)
 	return strings.HasPrefix(r.URL.String()[2:], gr.ImportPrefix)
 }
 
@@ -801,9 +800,7 @@ func main() {
 
 		}
 
-		fmt.Printf("apps=%+v", app)
 		if app.GoRedirectors != nil {
-			fmt.Printf("grs")
 			if ok := app.GoRedirectors.CheckAndServe(w, r); ok {
 				return
 			}
