@@ -203,7 +203,7 @@ type App struct {
 	Path          string        `yaml:"path"`
 
 	Auth                   *Auth             `yaml:"auth"`
-	Cache                  *Cache            `yaml:"cache"`
+	ProxyCache             *Cache            `yaml:"proxy_cache"`
 	DisableSecurityHeaders bool              `yaml:"disable_security_headers"`
 	AddHeaders             map[string]string `yaml:"add_headers"`
 
@@ -364,10 +364,10 @@ func open(p string) (*App, error) {
 	if err := yaml.Unmarshal(data, app); err != nil {
 		panic(err)
 	}
-	if app.Cache == nil {
-		app.Cache = &Cache{}
+	if app.ProxyCache == nil {
+		app.ProxyCache = &Cache{}
 	}
-	if err := app.Cache.Init(); err != nil {
+	if err := app.ProxyCache.Init(); err != nil {
 		panic(err)
 	}
 	if app.Path != "" {
@@ -575,7 +575,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		transport = http.DefaultTransport
 	}
 
-	cacheable := t.app.Cache.Enabled && (req.Method == "GET" || req.Method == "HEAD") && req.Header.Get("range") == ""
+	cacheable := t.app.ProxyCache.Enabled && (req.Method == "GET" || req.Method == "HEAD") && req.Header.Get("range") == ""
 	// FIXME(tsileo): handle caching header
 
 	if cacheable {
@@ -593,13 +593,13 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		return nil, err
 	}
 
-	_, shouldCache := t.app.Cache.statusCodeIndex[resp.StatusCode]
+	_, shouldCache := t.app.ProxyCache.statusCodeIndex[resp.StatusCode]
 	if cacheable && shouldCache {
 		dumpedResp, err := httputil.DumpResponse(resp, true)
 		if err != nil {
 			return nil, err
 		}
-		p.cache.Set(t.cacheKey(req), dumpedResp, t.app.Cache.duration)
+		p.cache.Set(t.cacheKey(req), dumpedResp, t.app.ProxyCache.duration)
 		resp.Header.Set("X-Cache", "MISS")
 	}
 
