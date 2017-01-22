@@ -793,6 +793,28 @@ func main() {
 			return
 		}
 
+		// First handle auth
+		client, ok := p.authDefender.Client(r.RemoteAddr)
+		if ok && client.Banned() {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		if app.authFunc(r) {
+			authSucceed = true
+		} else {
+			// Check for brute force
+			if banned := p.authDefender.Inc(r.RemoteAddr); banned {
+				// FIXME(tsileo): log the ban in redis
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.Header().Set("WWW-Authenticate", `Basic realm="`+app.Name+`"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
+			return
+		}
+
 		if !appOk {
 			// The app is not found
 			w.WriteHeader(http.StatusNotFound)
@@ -804,12 +826,6 @@ func main() {
 			if ok := app.GoRedirectors.CheckAndServe(w, r); ok {
 				return
 			}
-		}
-
-		if app.static != nil {
-			// TODO(tsileo): caching for static file?
-			app.static.ServeHTTP(w, r)
-			return
 		}
 
 		if r.URL.Path == "/_broxy_ui" {
@@ -845,30 +861,13 @@ func main() {
 			return
 		}
 
+		if app.static != nil {
+			// TODO(tsileo): caching for static file?
+			app.static.ServeHTTP(w, r)
+			return
+		}
+
 		// FIXME(tsileo): what to do about the Set-Cookie header and caching?
-
-		// First handle auth
-		client, ok := p.authDefender.Client(r.RemoteAddr)
-		if ok && client.Banned() {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-
-		if app.authFunc(r) {
-			authSucceed = true
-		} else {
-			// Check for brute force
-			if banned := p.authDefender.Inc(r.RemoteAddr); banned {
-				// FIXME(tsileo): log the ban in redis
-				w.WriteHeader(http.StatusForbidden)
-				return
-			}
-			w.Header().Set("WWW-Authenticate", `Basic realm="`+app.Name+`"`)
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
-			return
-		}
-
 		// rate-limiting handling?
 
 		// proxy handling
