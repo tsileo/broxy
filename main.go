@@ -30,14 +30,17 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/patrickmn/go-cache"
 	"github.com/tsileo/defender"
+
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/net/context"
-	_ "golang.org/x/time/rate"
+
 	"gopkg.in/yaml.v2"
+
+	"a4.io/gluapp"
 )
 
 // TODO(tsileo):
-// - [ ] IMPORTANT make email mandatory for LE config
+// - [ ] only trigger go redirector if ?go-get=1 is detected
 // - [ ] dynamic image resizing for static image
 // - [ ] PaaS like for static content assuming dns *.domain.com points to server
 // - [ ] Support creating new app via uploading zip app + broxy.yaml (on the same handler as stats)
@@ -198,8 +201,13 @@ type App struct {
 	Domains    []string `yaml:"domains"`
 
 	GoRedirectors goRedirectors `yaml:"go_redirectors"`
-	Proxy         string        `yaml:"proxy"`
-	Path          string        `yaml:"path"`
+
+	Proxy string `yaml:"proxy"`
+
+	// Move this to `static_files`
+	Path string `yaml:"path"`
+
+	AppConfig *gluapp.Config `yaml:"app"`
 
 	Auth                   *Auth             `yaml:"auth"`
 	ProxyCache             *Cache            `yaml:"proxy_cache"`
@@ -208,6 +216,7 @@ type App struct {
 
 	rproxy *httputil.ReverseProxy
 	static http.Handler
+	app    *gluapp.App
 }
 
 type topStats []struct {
@@ -371,6 +380,12 @@ func open(p string) (*App, error) {
 	}
 	if app.Path != "" {
 		app.static = http.FileServer(http.Dir(app.Path))
+	}
+	if app.AppConfig != nil {
+		app.app, err = gluapp.NewApp(app.AppConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if app.Proxy != "" {
 		target, err := url.Parse(app.Proxy)
@@ -859,6 +874,10 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(js)
 			return
+		}
+
+		if app.app != nil {
+			app.app.ServeHTTP(w, r)
 		}
 
 		if app.static != nil {
