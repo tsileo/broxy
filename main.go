@@ -210,7 +210,7 @@ type App struct {
 	AppConfig *gluapp.Config `yaml:"app"`
 
 	Auth                   *Auth             `yaml:"auth"`
-	ProxyCache             *Cache            `yaml:"proxy_cache"`
+	Cache                  *Cache            `yaml:"cache"`
 	DisableSecurityHeaders bool              `yaml:"disable_security_headers"`
 	AddHeaders             map[string]string `yaml:"add_headers"`
 
@@ -295,7 +295,8 @@ func (a *App) cacheKey(interval Interval, t time.Time) string {
 }
 
 type Cache struct {
-	Enabled         bool          `yaml:"enabled"`
+	CacheProxy      bool          `yaml:"cache_proxy"`
+	CacheApp        bool          `yaml:"cache_app"`
 	Time            string        `yaml:"time"`
 	duration        time.Duration `yaml:"-"`
 	StatusCode      []int         `yaml:"status_code"`
@@ -313,7 +314,7 @@ func (c *Cache) Init() error {
 	}
 	if c.StatusCode == nil {
 		// TODO(tsileo): default cached status code in a constant
-		c.StatusCode = []int{200, 404}
+		c.StatusCode = []int{200, 203, 204, 206, 300, 301, 404, 405, 410, 414, 501}
 	}
 	c.statusCodeIndex = map[int]bool{}
 	for _, status := range c.StatusCode {
@@ -372,10 +373,10 @@ func open(p string) (*App, error) {
 	if err := yaml.Unmarshal(data, app); err != nil {
 		panic(err)
 	}
-	if app.ProxyCache == nil {
-		app.ProxyCache = &Cache{}
+	if app.Cache == nil {
+		app.Cache = &Cache{}
 	}
-	if err := app.ProxyCache.Init(); err != nil {
+	if err := app.Cache.Init(); err != nil {
 		panic(err)
 	}
 	if app.Path != "" {
@@ -580,7 +581,7 @@ type Transport struct {
 }
 
 func (t *Transport) cacheKey(req *http.Request) string {
-	return req.URL.String()
+	return fmt.Sprintf("proxy:%s", req.URL.String())
 }
 
 func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
@@ -589,7 +590,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		transport = http.DefaultTransport
 	}
 
-	cacheable := t.app.ProxyCache.Enabled && (req.Method == "GET" || req.Method == "HEAD") && req.Header.Get("range") == ""
+	cacheable := t.app.Cache.CacheProxy && (req.Method == "GET" || req.Method == "HEAD") && req.Header.Get("range") == ""
 	// FIXME(tsileo): handle caching header
 
 	if cacheable {
@@ -607,13 +608,13 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		return nil, err
 	}
 
-	_, shouldCache := t.app.ProxyCache.statusCodeIndex[resp.StatusCode]
+	_, shouldCache := t.app.Cache.statusCodeIndex[resp.StatusCode]
 	if cacheable && shouldCache {
 		dumpedResp, err := httputil.DumpResponse(resp, true)
 		if err != nil {
 			return nil, err
 		}
-		p.cache.Set(t.cacheKey(req), dumpedResp, t.app.ProxyCache.duration)
+		p.cache.Set(t.cacheKey(req), dumpedResp, t.app.Cache.duration)
 		resp.Header.Set("X-Cache", "MISS")
 	}
 
@@ -877,7 +878,32 @@ func main() {
 		}
 
 		if app.app != nil {
-			app.app.ServeHTTP(w, r)
+
+			cacheable := app.Cache.CacheApp && (r.Method == "GET" || r.Method == "HEAD") && r.Header.Get("range") == ""
+			// FIXME(tsileo): handle caching header
+
+			if cacheable {
+				if iresp, ok := p.cache.Get(fmt.Sprintf("app:%v:app:%v", app.ID, r.URL.String())); ok {
+					resp := iresp.(*gluapp.Response)
+					resp.Header.Set("X-Cache", "HIT")
+					resp.WriteTo(rw)
+					return
+				}
+			}
+
+			resp, err := app.app.Exec(w, r)
+			if err != nil {
+				panic(err)
+			}
+			resp.Header.Set("X-Cache", "MISS")
+			resp.WriteTo(w)
+
+			_, shouldCache := app.Cache.statusCodeIndex[resp.StatusCode]
+			if cacheable && shouldCache {
+				p.cache.Set(fmt.Sprintf("app:%v:app:%v", app.ID, r.URL.String()), resp, app.Cache.duration)
+			}
+
+			return
 		}
 
 		if app.static != nil {
