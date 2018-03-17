@@ -1,5 +1,7 @@
 # Broxy
 
+[![Build Status](https://travis-ci.org/tsileo/broxy.svg?branch=master)](https://travis-ci.org/tsileo/broxy)
+
 The most friendly proxy ever!
 
 ## Features
