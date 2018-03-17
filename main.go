@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	_ "context"
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -32,7 +32,6 @@ import (
 	"github.com/tsileo/defender"
 
 	"golang.org/x/crypto/acme/autocert"
-	"golang.org/x/net/context"
 
 	"gopkg.in/yaml.v2"
 
@@ -511,12 +510,6 @@ func proxyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func redirectTLS(w http.ResponseWriter, r *http.Request) {
-	r.URL.Host = r.Host
-	r.URL.Scheme = "https"
-	http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently)
-}
-
 func (p *Proxy) serve() {
 	go func() {
 		autoTLS := false
@@ -524,7 +517,7 @@ func (p *Proxy) serve() {
 		if autoTLS {
 			// Spawn a webserver :80 to handle HTTP -> HTTPS redirections
 			go func() {
-				if err := http.ListenAndServe(":80", http.HandlerFunc(redirectTLS)); err != nil {
+				if err := http.ListenAndServe(":http", m.HTTPHandler(nil)); err != nil {
 					panic(err)
 				}
 			}()
