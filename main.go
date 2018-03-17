@@ -515,13 +515,6 @@ func (p *Proxy) serve() {
 		autoTLS := false
 		listen := "127.0.0.1:8020"
 		if autoTLS {
-			// Spawn a webserver :80 to handle HTTP -> HTTPS redirections
-			go func() {
-				if err := http.ListenAndServe(":http", m.HTTPHandler(nil)); err != nil {
-					panic(err)
-				}
-			}()
-
 			// FIXME(tsileo): cache from config and listen and auto tls too
 			cacheDir := autocert.DirCache("le.cache")
 
@@ -531,6 +524,13 @@ func (p *Proxy) serve() {
 				HostPolicy: p.hostPolicy(),
 				Cache:      cacheDir,
 			}
+
+			// Spawn a webserver :80 to handle HTTP -> HTTPS redirections
+			go func() {
+				if err := http.ListenAndServe(":http", m.HTTPHandler(nil)); err != nil {
+					panic(err)
+				}
+			}()
 
 			s := &http.Server{
 				Addr:    listen,
