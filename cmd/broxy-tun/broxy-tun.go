@@ -9,11 +9,20 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	tm "github.com/buger/goterm"
 )
 
-type Stats struct{}
+type Stats struct {
+	Reqs       int    `redis:"reqs" json:"reqs"`
+	Written    int    `redis:"written" json:"written"`
+	CacheHit   int    `redis:"cache:hit" json:"cache_hit"`
+	CacheMiss  int    `redis:"cache:miss" json:"cache_miss"`
+	CacheTotal int    `redis:"cache:total" json:"cache_total"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+}
 
 type App struct {
 	ID         string   `json:"appid"`
@@ -24,6 +33,22 @@ type App struct {
 	// Move this to `static_files`
 	Stats      *Stats            `json:"stats,omitempty"`
 	AddHeaders map[string]string `json:"add_headers"`
+}
+
+func getApp(localPort, remotePort, name string) (*App, error) {
+	appid := fmt.Sprintf("tun-%s", remotePort)
+	app := &App{}
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8021/app/%s", appid), nil)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.NewDecoder(resp.Body).Decode(app); err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return app, nil
 }
 
 func registerApp(localPort, remotePort, name string) error {
@@ -78,6 +103,20 @@ func main() {
 		panic(err)
 	}
 	defer deleteApp(localPort, remotePort, name)
+
+	go func() {
+		for {
+			a, err := getApp(localPort, remotePort, name)
+			if err != nil {
+				panic(err)
+			}
+			tm.MoveCursor(1, 1)
+			tm.Println(dat)
+			tm.Printf("reqs: %d", a.Stats.Reqs)
+			tm.Flush()
+			time.Sleep(1 * time.Second)
+		}
+	}()
 
 	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt,
