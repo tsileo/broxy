@@ -422,7 +422,7 @@ func open(p string) (*App, error) {
 	return app, app.init()
 }
 
-func (p *Proxy) updateIndex(app *App) {
+func (p *Proxy) deleteIndex(app *App) {
 	p.Lock()
 	defer p.Unlock()
 	if oldApp, ok := p.apps[app.ID]; ok {
@@ -431,6 +431,12 @@ func (p *Proxy) updateIndex(app *App) {
 			delete(p.hostIndex, oldDomain)
 		}
 	}
+}
+
+func (p *Proxy) updateIndex(app *App) {
+	p.deleteIndex(app)
+	p.Lock()
+	defer p.Unlock()
 	p.apps[app.ID] = app
 	for _, domain := range app.Domains {
 		p.hostIndex[domain] = app
@@ -534,6 +540,15 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Printf("app=%+v\n", app)
 		p.updateIndex(app)
+	case "DELETE":
+		p.Lock()
+		defer p.Unlock()
+		app, ok := p.apps[appID]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		p.deleteIndex(app)
 	case "GET":
 		p.Lock()
 		defer p.Unlock()
@@ -726,7 +741,7 @@ type broxyConfig struct {
 }
 
 func loadBroxyConfig(path string) (*broxyConfig, error) {
-	var conf *broxyConfig
+	conf := &broxyConfig{}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
