@@ -29,6 +29,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"github.com/patrickmn/go-cache"
+	"github.com/r3labs/sse"
 	"github.com/tsileo/defender"
 
 	"golang.org/x/crypto/acme/autocert"
@@ -158,6 +159,7 @@ type Proxy struct {
 	quit          chan struct{}
 	hostWhitelist map[string]bool
 	router        *mux.Router
+	sse           *sse.Server
 
 	sync.Mutex
 }
@@ -219,11 +221,17 @@ type App struct {
 	rproxy *httputil.ReverseProxy
 	static http.Handler
 	app    *gluapp.App
+	stream *sse.Stream
+	p      *Proxy
 }
 
-func (app *App) init() error {
+func (app *App) init(p *Proxy) error {
+	app.p = p
 	if app.ID == "" {
 		return fmt.Errorf("misisng app ID")
+	}
+	if !app.p.sse.StreamExists(app.ID) {
+		app.p.sse.CreateStream(app.ID)
 	}
 	if app.Cache == nil {
 		app.Cache = &Cache{}
@@ -405,7 +413,7 @@ func singleJoiningSlash(a, b string) string {
 	return a + b
 }
 
-func open(p string) (*App, error) {
+func open(prox *Proxy, p string) (*App, error) {
 	f, err := os.Open(p)
 	if err != nil {
 		panic(err)
@@ -419,7 +427,7 @@ func open(p string) (*App, error) {
 	if err := yaml.Unmarshal(data, app); err != nil {
 		panic(err)
 	}
-	return app, app.init()
+	return app, app.init(prox)
 }
 
 func (p *Proxy) deleteIndex(app *App) {
@@ -430,6 +438,7 @@ func (p *Proxy) deleteIndex(app *App) {
 			delete(p.hostWhitelist, oldDomain)
 			delete(p.hostIndex, oldDomain)
 		}
+		delete(p.apps, app.ID)
 	}
 }
 
@@ -454,7 +463,7 @@ func (p *Proxy) loadConfig() error {
 	for _, fi := range fis {
 		n := fi.Name()
 		if strings.HasSuffix(n, ".yaml") {
-			app, err := open(filepath.Join("etc/proxy", n))
+			app, err := open(p, filepath.Join("etc/proxy", n))
 			if err != nil {
 				panic(err)
 			}
@@ -483,7 +492,7 @@ func (p *Proxy) loadConfig() error {
 					// log.Println("modified file:", event.Name)
 					if strings.HasSuffix(event.Name, ".yaml") {
 						func() {
-							app, err := open(event.Name)
+							app, err := open(p, event.Name)
 							if err != nil {
 								panic(err)
 							}
@@ -538,13 +547,13 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(app); err != nil {
 			panic(err)
 		}
-		app.init()
+		app.init(p)
 		p.updateIndex(app)
 		fmt.Printf("app=%+v\n%+v\n", app, p.apps)
 	case "DELETE":
 		p.Lock()
-		defer p.Unlock()
 		app, ok := p.apps[appID]
+		p.Unlock()
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -578,6 +587,7 @@ func (p *Proxy) serveAdminAPI() {
 	log.Printf("Starting admin API on 127.0.0.1:8021")
 	r := mux.NewRouter()
 	r.HandleFunc("/app/{appid}", p.apiAppHandler)
+	r.HandleFunc("/pageviews", p.sse.HTTPHandler)
 	http.ListenAndServe("127.0.0.1:8021", r)
 }
 
@@ -759,6 +769,19 @@ func loadBroxyConfig(path string) (*broxyConfig, error) {
 	return conf, nil
 }
 
+type Req struct {
+	AppID      string `json:"appid"`
+	RemoteAddr string `json:"remote_addr"`
+	UserAgent  string `json:":"user_agent"`
+	Method     string `json:"method"`
+	Host       string `json:"host"`
+	URL        string `json:"url"`
+	Status     int    `json"status"`
+	Referer    string `json:"referer"`
+	RespTime   string `json:"resp_time"`
+	RespSize   int    `json:"resp_size"`
+}
+
 func main() {
 	// TODO(tsileo): handle the config of the proxy
 	pool = newPool(":6379")
@@ -766,7 +789,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	sseServer := sse.New()
 	p = &Proxy{
+		sse:           sseServer,
 		apps:          map[string]*App{},
 		hostIndex:     map[string]*App{},
 		startedAt:     time.Now(),
@@ -800,6 +825,11 @@ func main() {
 		p.Lock()
 		app, appOk := p.hostIndex[r.Host]
 		p.Unlock()
+
+		if !appOk {
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
 
 		host := r.Host
 		ourl := r.URL.String()
@@ -887,8 +917,24 @@ func main() {
 			duration := time.Since(start)
 			// TODO(tsileo): improve logging format
 			// FIXME(tsileo): put this in a middleware
+			ereq := &Req{
+				AppID:      app.ID,
+				RemoteAddr: r.RemoteAddr,
+				UserAgent:  ua,
+				Method:     r.Method,
+				Host:       host,
+				URL:        ourl,
+				Status:     w.status,
+				Referer:    referer,
+				RespTime:   duration.String(),
+				RespSize:   w.written,
+			}
 			log.Printf("%s %s %s %s %s %s %d %s %d %s %s", app.ID, r.RemoteAddr, ua, r.Method, host, ourl, w.status, cached, w.written, referer, duration)
-
+			evt, err := json.Marshal(ereq)
+			if err != nil {
+				panic(err)
+			}
+			p.sse.Publish(app.ID, &sse.Event{Data: evt, Event: []byte("pageview")})
 		}()
 
 		if client, ok := p.defender.Client(r.RemoteAddr); ok && client.Banned() {

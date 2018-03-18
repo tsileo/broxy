@@ -60,3 +60,7 @@
   go-tests = true
   unused-packages = true
   non-go = true
+
+[[constraint]]
+  name = "github.com/r3labs/sse"
+  version = "1.0.1"

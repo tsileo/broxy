@@ -23,6 +23,12 @@
   revision = "66e0eb2c6a9f11df92a9f12ef9863b33f8f252a2"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/buger/goterm"
+  packages = ["."]
+  revision = "c9def0117b24a53e86f6c4c942e4042090a4fe8c"
+
+[[projects]]
   name = "github.com/fsnotify/fsnotify"
   packages = ["."]
   revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
@@ -54,6 +60,12 @@
   packages = ["."]
   revision = "a3647f8e31d79543b2d0f0ae2fe5c379d72cedc0"
   version = "v2.1.0"
+
+[[projects]]
+  name = "github.com/r3labs/sse"
+  packages = ["."]
+  revision = "ab73c814bbdece537f16e92302cd99d1618d0e0d"
+  version = "1.0.1"
 
 [[projects]]
   branch = "master"
@@ -108,6 +120,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "1ed627d4d4b41dc0c985d1917eadde628ccc4d85800df0224b70e0bfabd21b90"
+  inputs-digest = "7558d482f1912f60deea19f07da363f14640ced2847e9eb745eb9ca6503d7e95"
   solver-name = "gps-cdcl"
   solver-version = 1

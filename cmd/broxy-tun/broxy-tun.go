@@ -70,7 +70,7 @@ func main() {
 
 	tm.Clear()
 	tm.MoveCursor(1, 1)
-	dat := header + fmt.Sprintf("tunnel:\nfowarding: %s.tun.a4.io -> localhost:%s", name, name, localPort)
+	dat := header + fmt.Sprintf("fowarding: %s.tun.a4.io -> localhost:%s", name, localPort)
 	tm.Println(dat)
 	tm.Flush()
 
@@ -87,7 +87,7 @@ func main() {
 	for {
 		select {
 		case sig := <-cs:
-			fmt.Printf("shutting down [sig=%v]...", sig)
+			fmt.Printf("quitting", sig)
 			return
 		}
 	}
