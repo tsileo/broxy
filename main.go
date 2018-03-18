@@ -195,28 +195,74 @@ func (p *Proxy) hostPolicy() autocert.HostPolicy {
 }
 
 type App struct {
-	ID         string   `yaml:"-"`
-	Name       string   `yaml:"name"`
-	ServeStats bool     `yaml:"serve_stats"`
-	Domains    []string `yaml:"domains"`
+	ID         string   `yaml:"-" json:"appid"`
+	Name       string   `yaml:"name" json:"name"`
+	ServeStats bool     `yaml:"serve_stats" json:"-"`
+	Domains    []string `yaml:"domains" json:"domains"`
 
-	GoRedirectors goRedirectors `yaml:"go_redirectors"`
+	GoRedirectors goRedirectors `yaml:"go_redirectors" json:"-"`
 
-	Proxy string `yaml:"proxy"`
+	Proxy string `yaml:"proxy" json:"proxy"`
 
 	// Move this to `static_files`
-	Path string `yaml:"path"`
+	Path string `yaml:"path" json:"-"`
 
-	AppConfig *gluapp.Config `yaml:"app"`
+	AppConfig *gluapp.Config `yaml:"app" json:"-"`
 
-	Auth                   *Auth             `yaml:"auth"`
-	Cache                  *Cache            `yaml:"cache"`
-	DisableSecurityHeaders bool              `yaml:"disable_security_headers"`
-	AddHeaders             map[string]string `yaml:"add_headers"`
+	Stats *stats `yaml:"-" json:"stats,omitempty"`
+
+	Auth                   *Auth             `yaml:"auth" json:"-"`
+	Cache                  *Cache            `yaml:"cache" json:"-"`
+	DisableSecurityHeaders bool              `yaml:"disable_security_headers" json:"-"`
+	AddHeaders             map[string]string `yaml:"add_headers" json:"add_headers"`
 
 	rproxy *httputil.ReverseProxy
 	static http.Handler
 	app    *gluapp.App
+}
+
+func (app *App) init() error {
+	if app.ID == "" {
+		return fmt.Errorf("misisng app ID")
+	}
+	if app.Cache == nil {
+		app.Cache = &Cache{}
+	}
+	if err := app.Cache.Init(); err != nil {
+		return err
+	}
+	if app.Path != "" {
+		app.static = http.FileServer(http.Dir(app.Path))
+	}
+	var err error
+	if app.AppConfig != nil {
+		app.app, err = gluapp.NewApp(app.AppConfig)
+		if err != nil {
+			return err
+		}
+	}
+	if app.Proxy != "" {
+		target, err := url.Parse(app.Proxy)
+		if err != nil {
+			return err
+		}
+		// borrowed from https://golang.org/src/net/http/httputil/reverseproxy.go
+		targetQuery := target.RawQuery
+		director := func(req *http.Request) {
+			req.URL.Scheme = target.Scheme
+			req.URL.Host = target.Host
+			req.URL.Path = singleJoiningSlash(target.Path, req.URL.Path)
+			req.Header.Set("Host", target.Host)
+			if targetQuery == "" || req.URL.RawQuery == "" {
+				req.URL.RawQuery = targetQuery + req.URL.RawQuery
+			} else {
+				req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
+			}
+		}
+		transport := &Transport{app: app}
+		app.rproxy = &httputil.ReverseProxy{Director: director, Transport: transport}
+	}
+	return nil
 }
 
 type topStats []struct {
@@ -373,44 +419,7 @@ func open(p string) (*App, error) {
 	if err := yaml.Unmarshal(data, app); err != nil {
 		panic(err)
 	}
-	if app.Cache == nil {
-		app.Cache = &Cache{}
-	}
-	if err := app.Cache.Init(); err != nil {
-		panic(err)
-	}
-	if app.Path != "" {
-		app.static = http.FileServer(http.Dir(app.Path))
-	}
-	if app.AppConfig != nil {
-		app.app, err = gluapp.NewApp(app.AppConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if app.Proxy != "" {
-		target, err := url.Parse(app.Proxy)
-		if err != nil {
-			return nil, err
-		}
-		// borrowed from https://golang.org/src/net/http/httputil/reverseproxy.go
-		targetQuery := target.RawQuery
-		director := func(req *http.Request) {
-			req.URL.Scheme = target.Scheme
-			req.URL.Host = target.Host
-			req.URL.Path = singleJoiningSlash(target.Path, req.URL.Path)
-			req.Header.Set("Host", target.Host)
-			if targetQuery == "" || req.URL.RawQuery == "" {
-				req.URL.RawQuery = targetQuery + req.URL.RawQuery
-			} else {
-				req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
-			}
-		}
-		transport := &Transport{app: app}
-		app.rproxy = &httputil.ReverseProxy{Director: director, Transport: transport}
-	}
-
-	return app, nil
+	return app, app.init()
 }
 
 func (p *Proxy) updateIndex(app *App) {
@@ -511,7 +520,52 @@ func proxyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appid"]
+	if appID == "" {
+		panic("missing appid")
+	}
+	switch r.Method {
+	case "POST":
+		app := &App{ID: appID}
+		if err := json.NewDecoder(r.Body).Decode(app); err != nil {
+			panic(err)
+		}
+		fmt.Printf("app=%+v\n", app)
+		p.updateIndex(app)
+	case "GET":
+		p.Lock()
+		defer p.Unlock()
+		app, ok := p.apps[appID]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		stats, err := app.stats(All)
+		if err != nil {
+			panic(err)
+		}
+		app.Stats = stats
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(app); err != nil {
+			panic(err)
+		}
+		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (p *Proxy) serveAdminAPI() {
+	log.Printf("Starting admin API on 127.0.0.1:8021")
+	r := mux.NewRouter()
+	r.HandleFunc("/app/{appid}", p.apiAppHandler)
+	http.ListenAndServe("127.0.0.1:8021", r)
+}
+
 func (p *Proxy) serve() {
+	go p.serveAdminAPI()
 	go func() {
 		if p.conf.AutoTLS {
 			// FIXME(tsileo): cache from config and listen and auto tls too
