@@ -81,7 +81,7 @@ func newPool(addr string) *redis.Pool {
 
 var (
 	pool       *redis.Pool
-	serverName = "Broxy"
+	serverName = "Broxy (+https://github.com/tsileo/broxy)"
 )
 
 var tmpl = template.Must(template.New("main").Parse(`
@@ -142,6 +142,7 @@ func secureCompare(given string, actual string) bool {
 }
 
 type Proxy struct {
+	conf      *broxyConfig
 	apps      map[string]*App
 	hostIndex map[string]*App
 
@@ -512,9 +513,7 @@ func proxyMiddleware(next http.Handler) http.Handler {
 
 func (p *Proxy) serve() {
 	go func() {
-		autoTLS := false
-		listen := "127.0.0.1:8020"
-		if autoTLS {
+		if p.conf.AutoTLS {
 			// FIXME(tsileo): cache from config and listen and auto tls too
 			cacheDir := autocert.DirCache("le.cache")
 
@@ -533,7 +532,7 @@ func (p *Proxy) serve() {
 			}()
 
 			s := &http.Server{
-				Addr:    listen,
+				Addr:    ":https",
 				Handler: p.router,
 				// FIXME(tsileo): create a custom GetCertificate wrapper to log cert generatio in Redis
 				TLSConfig:    &tls.Config{GetCertificate: m.GetCertificate},
@@ -542,7 +541,7 @@ func (p *Proxy) serve() {
 			}
 			s.ListenAndServeTLS("", "")
 		} else {
-			http.ListenAndServe(listen, p.router)
+			http.ListenAndServe(p.conf.Listen, p.router)
 		}
 	}()
 	p.tillShutdown()
@@ -641,6 +640,8 @@ func (rw *responseWriter) WriteHeader(header int) {
 		rw.rw.Header().Set("Strict-Transport-Security", "max-age=63072000; preload")
 		rw.rw.Header().Set("X-Content-Type-Options", "nosniff")
 		rw.rw.Header().Set("X-Frame-Options", "DENY")
+		rw.rw.Header().Set("X-XSS-Protection", "1; mode=block")
+		rw.rw.Header().Set("Referrer-Policy", "strict-origin")
 	}
 
 	// Custom headers
@@ -665,9 +666,35 @@ type reqStats struct {
 	cacheMiss bool
 }
 
+type broxyConfig struct {
+	AutoTLS bool   `yaml:"auto_tls"`
+	Listen  string `yaml:"listen"`
+}
+
+func loadBroxyConfig(path string) (*broxyConfig, error) {
+	var conf *broxyConfig
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	if err := yaml.Unmarshal(data, conf); err != nil {
+		return nil, err
+	}
+	return conf, nil
+}
+
 func main() {
 	// TODO(tsileo): handle the config of the proxy
 	pool = newPool(":6379")
+	conf, err := loadBroxyConfig("broxy.yaml")
+	if err != nil {
+		panic(err)
+	}
 	p = &Proxy{
 		apps:          map[string]*App{},
 		hostIndex:     map[string]*App{},
@@ -680,6 +707,7 @@ func main() {
 		authDefender: defender.New(10, 60*time.Minute, 12*60*time.Minute),
 		// more than 50 reqs/s for 5min will cause a 12 hours ban
 		defender: defender.New(15000, 300*time.Second, 12*60*time.Minute),
+		conf:     conf,
 	}
 
 	q1 := make(chan struct{})
