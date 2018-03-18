@@ -231,7 +231,8 @@ func (app *App) init(p *Proxy) error {
 		return fmt.Errorf("misisng app ID")
 	}
 	if !app.p.sse.StreamExists(app.ID) {
-		app.p.sse.CreateStream(app.ID)
+		s := app.p.sse.CreateStream(app.ID)
+		s.AutoReplay = false
 	}
 	if app.Cache == nil {
 		app.Cache = &Cache{}
@@ -586,8 +587,8 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) serveAdminAPI() {
 	log.Printf("Starting admin API on 127.0.0.1:8021")
 	r := mux.NewRouter()
+	r.HandleFunc("/events", p.sse.HTTPHandler)
 	r.HandleFunc("/app/{appid}", p.apiAppHandler)
-	r.HandleFunc("/pageviews", p.sse.HTTPHandler)
 	http.ListenAndServe("127.0.0.1:8021", r)
 }
 
