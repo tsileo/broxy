@@ -538,8 +538,9 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(app); err != nil {
 			panic(err)
 		}
-		fmt.Printf("app=%+v\n", app)
+		app.init()
 		p.updateIndex(app)
+		fmt.Printf("app=%+v\n%+v\n", app, p.apps)
 	case "DELETE":
 		p.Lock()
 		defer p.Unlock()
@@ -549,6 +550,7 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.deleteIndex(app)
+		fmt.Printf("app=%+v\n%+v\n", app, p.apps)
 	case "GET":
 		p.Lock()
 		defer p.Unlock()

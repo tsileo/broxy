@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
+	"os/signal"
+	"strings"
+	"syscall"
 
-	"github.com/rivo/tview"
+	tm "github.com/buger/goterm"
 )
 
 type Stats struct{}
@@ -58,33 +60,35 @@ func deleteApp(localPort, remotePort, name string) error {
 	return nil
 }
 
-var header = "[yellow]Broxy Tunnel[white]\n\nstatus: [green]ONLINE[white]\n\n"
+var header = "Broxy Tunnel\n\n"
 
 func main() {
-	localPort := os.Args[2]
-	remotePort := os.Args[3]
-	name := os.Args[4]
+	args := strings.Split(os.Args[2], " ")
+	localPort := args[0]
+	remotePort := args[1]
+	name := args[2]
+
+	tm.Clear()
+	tm.MoveCursor(1, 1)
+	dat := header + fmt.Sprintf("tunnel:\nfowarding: %s.tun.a4.io -> localhost:%s", name, name, localPort)
+	tm.Println(dat)
+	tm.Flush()
 
 	if err := registerApp(localPort, remotePort, name); err != nil {
 		panic(err)
 	}
 	defer deleteApp(localPort, remotePort, name)
 
-	app := tview.NewApplication()
-	textView := tview.NewTextView().
-		SetDynamicColors(true).
-		SetRegions(true).
-		SetWordWrap(true).
-		SetChangedFunc(func() {
-			app.Draw()
-		})
-	go func() {
-		for i := range []int{1, 2, 3, 4, 5, 6, 7} {
-			textView.SetText(fmt.Sprintf(header+"[green]%d[white]", i))
-			time.Sleep(2 * time.Second)
+	cs := make(chan os.Signal, 1)
+	signal.Notify(cs, os.Interrupt,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
+	for {
+		select {
+		case sig := <-cs:
+			fmt.Printf("shutting down [sig=%v]...", sig)
+			return
 		}
-	}()
-	if err := app.SetRoot(textView, true).Run(); err != nil {
-		panic(err)
 	}
 }
