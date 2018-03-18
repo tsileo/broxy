@@ -12,6 +12,7 @@ import (
 	"time"
 
 	tm "github.com/buger/goterm"
+	"github.com/r3labs/sse"
 )
 
 type Stats struct {
@@ -95,7 +96,7 @@ func main() {
 
 	tm.Clear()
 	tm.MoveCursor(1, 1)
-	dat := header + fmt.Sprintf("fowarding: %s.tun.a4.io -> localhost:%s", name, localPort)
+	dat := header + fmt.Sprintf("\t%s.tun.a4.io -> localhost:%s\n\n", name, localPort)
 	tm.Println(dat)
 	tm.Flush()
 
@@ -103,6 +104,19 @@ func main() {
 		panic(err)
 	}
 	defer deleteApp(localPort, remotePort, name)
+	var reqs int
+
+	go func() {
+		client := sse.NewClient("http://localhost:8021/events")
+		stream := fmt.Sprintf("tun-%s", remotePort)
+
+		client.Subscribe(stream, func(msg *sse.Event) {
+			tm.MoveCursor(1, 1)
+			tm.Println(dat)
+			tm.Printf("reqs: %d\n", reqs)
+			tm.Printf("\n\n%s", msg.Data)
+		})
+	}()
 
 	go func() {
 		for {
@@ -112,7 +126,8 @@ func main() {
 			}
 			tm.MoveCursor(1, 1)
 			tm.Println(dat)
-			tm.Printf("reqs: %d", a.Stats.Reqs)
+			reqs = a.Stats.Reqs
+			tm.Printf("reqs: %d\n", a.Stats.Reqs)
 			tm.Flush()
 			time.Sleep(1 * time.Second)
 		}
@@ -125,8 +140,8 @@ func main() {
 		syscall.SIGQUIT)
 	for {
 		select {
-		case sig := <-cs:
-			fmt.Printf("quitting", sig)
+		case <-cs:
+			fmt.Println("quitting...")
 			return
 		}
 	}
