@@ -768,14 +768,16 @@ func loadBroxyConfig(path string) (*broxyConfig, error) {
 type Req struct {
 	AppID      string `json:"appid"`
 	RemoteAddr string `json:"remote_addr"`
-	UserAgent  string `json:":"user_agent"`
+	UserAgent  string `json:"user_agent"`
 	Method     string `json:"method"`
 	Host       string `json:"host"`
 	URL        string `json:"url"`
-	Status     int    `json"status"`
+	Status     int    `json:"status"`
 	Referer    string `json:"referer"`
 	RespTime   string `json:"resp_time"`
 	RespSize   int    `json:"resp_size"`
+	Time       string `json:"time"`
+	Proto      string `json:"proto"`
 }
 
 func main() {
@@ -917,6 +919,7 @@ func main() {
 			ereq := &Req{
 				AppID:      app.ID,
 				RemoteAddr: r.RemoteAddr,
+				Proto:      r.Proto,
 				UserAgent:  ua,
 				Method:     r.Method,
 				Host:       host,
@@ -925,8 +928,10 @@ func main() {
 				Referer:    referer,
 				RespTime:   duration.String(),
 				RespSize:   w.written,
+				Time:       start.Format(time.RFC3339),
 			}
-			log.Printf("%s %s %s %s %s %s %d %s %d %s %s", app.ID, r.RemoteAddr, ua, r.Method, host, ourl, w.status, cached, w.written, referer, duration)
+			log.Printf("%s %s %s - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\"", app.ID, duration, r.RemoteAddr, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
+				w.status, w.written, referer, ua)
 			evt, err := json.Marshal(ereq)
 			if err != nil {
 				panic(err)
