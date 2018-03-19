@@ -9,10 +9,9 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
-	tm "github.com/buger/goterm"
-	"github.com/r3labs/sse"
+	"a4.io/ssse/pkg/client"
+	"github.com/rivo/tview"
 )
 
 type Stats struct {
@@ -86,7 +85,7 @@ func deleteApp(localPort, remotePort, name string) error {
 	return nil
 }
 
-var header = "Broxy Tunnel\n\n"
+var header = "[yellow]Broxy Tunnel[white]\n\n"
 
 func main() {
 	args := strings.Split(os.Args[2], " ")
@@ -94,43 +93,37 @@ func main() {
 	remotePort := args[1]
 	name := args[2]
 
-	tm.Clear()
-	tm.MoveCursor(1, 1)
 	dat := header + fmt.Sprintf("\t%s.tun.a4.io -> localhost:%s\n\n", name, localPort)
-	tm.Println(dat)
-	tm.Flush()
+
+	app := tview.NewApplication()
+	textView := tview.NewTextView().
+		SetText(dat).
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWordWrap(true).
+		SetChangedFunc(func() {
+			app.Draw()
+		})
+
+	go func() {
+		if err := app.SetRoot(textView, true).Run(); err != nil {
+			panic(err)
+		}
+	}()
 
 	if err := registerApp(localPort, remotePort, name); err != nil {
 		panic(err)
 	}
 	defer deleteApp(localPort, remotePort, name)
-	var reqs int
+	reqs := []*client.Event{}
 
 	go func() {
-		client := sse.NewClient("http://localhost:8021/events")
-		stream := fmt.Sprintf("tun-%s", remotePort)
-
-		client.Subscribe(stream, func(msg *sse.Event) {
-			tm.MoveCursor(1, 1)
-			tm.Println(dat)
-			tm.Printf("reqs: %d\n", reqs)
-			tm.Printf("\n\n%s", msg.Data)
+		c := client.New("http://localhost:8021/pageviews")
+		c.Subscribe(nil, func(msg *client.Event) error {
+			reqs = append(reqs, msg)
+			textView.SetText(dat + fmt.Sprintf("reqs: %d\n\n%s", len(reqs), msg.Data))
+			return nil
 		})
-	}()
-
-	go func() {
-		for {
-			a, err := getApp(localPort, remotePort, name)
-			if err != nil {
-				panic(err)
-			}
-			tm.MoveCursor(1, 1)
-			tm.Println(dat)
-			reqs = a.Stats.Reqs
-			tm.Printf("reqs: %d\n", a.Stats.Reqs)
-			tm.Flush()
-			time.Sleep(1 * time.Second)
-		}
 	}()
 
 	cs := make(chan os.Signal, 1)

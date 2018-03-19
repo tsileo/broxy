@@ -29,7 +29,6 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"github.com/patrickmn/go-cache"
-	"github.com/r3labs/sse"
 	"github.com/tsileo/defender"
 
 	"golang.org/x/crypto/acme/autocert"
@@ -37,6 +36,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"a4.io/gluapp"
+	"a4.io/ssse/pkg/server"
 )
 
 // TODO(tsileo):
@@ -159,7 +159,7 @@ type Proxy struct {
 	quit          chan struct{}
 	hostWhitelist map[string]bool
 	router        *mux.Router
-	sse           *sse.Server
+	sse           *server.SSEServer
 
 	sync.Mutex
 }
@@ -221,7 +221,6 @@ type App struct {
 	rproxy *httputil.ReverseProxy
 	static http.Handler
 	app    *gluapp.App
-	stream *sse.Stream
 	p      *Proxy
 }
 
@@ -229,10 +228,6 @@ func (app *App) init(p *Proxy) error {
 	app.p = p
 	if app.ID == "" {
 		return fmt.Errorf("misisng app ID")
-	}
-	if !app.p.sse.StreamExists(app.ID) {
-		s := app.p.sse.CreateStream(app.ID)
-		s.AutoReplay = false
 	}
 	if app.Cache == nil {
 		app.Cache = &Cache{}
@@ -587,7 +582,7 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) serveAdminAPI() {
 	log.Printf("Starting admin API on 127.0.0.1:8021")
 	r := mux.NewRouter()
-	r.HandleFunc("/events", p.sse.HTTPHandler)
+	r.Handle("/pageviews", p.sse)
 	r.HandleFunc("/app/{appid}", p.apiAppHandler)
 	http.ListenAndServe("127.0.0.1:8021", r)
 }
@@ -790,7 +785,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	sseServer := sse.New()
+	sseServer := server.New()
+	sseServer.Start()
 	p = &Proxy{
 		sse:           sseServer,
 		apps:          map[string]*App{},
@@ -935,7 +931,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			p.sse.Publish(app.ID, &sse.Event{Data: evt, Event: []byte("pageview")})
+			p.sse.Publish(app.ID, evt)
 		}()
 
 		if client, ok := p.defender.Client(r.RemoteAddr); ok && client.Banned() {
