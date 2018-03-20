@@ -947,6 +947,7 @@ func main() {
 				username = "-"
 			}
 			// TODO(tsileo): write to a special log file for each appid (without the appid/duration, or optioal?), create broxy-tail that uses this format
+			app.log.Write([]byte(ereq.ApacheFmt()))
 			fmt.Printf("%s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
 				w.status, w.written, referer, ua, app.ID, duration)
 			evt, err := json.Marshal(ereq)

@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 
 	"a4.io/ssse/pkg/client"
 	"github.com/google/subcommands"
+	"github.com/tsileo/broxy/pkg/req"
 )
 
 type tailCmd struct {
@@ -30,8 +32,12 @@ func (t *tailCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 	c := client.New(t.host + "/pageviews")
 	c.Password = t.apiKey
 
+	req := &req.Req{}
 	if err := c.Subscribe(nil, func(e *client.Event) error {
-		fmt.Printf("event=%+v\n", e)
+		if err := json.Unmarshal(e.Data, req); err != nil {
+			return err
+		}
+		fmt.Printf(req.ApacheFmt())
 		return nil
 	}); err != nil {
 		panic(err)
