@@ -230,7 +230,7 @@ func (p *Proxy) hostPolicy() autocert.HostPolicy {
 }
 
 type App struct {
-	ID         string   `yaml:"-" json:"appid"`
+	ID         string   `yaml:"id" json:"appid"`
 	Name       string   `yaml:"name" json:"name"`
 	ServeStats bool     `yaml:"serve_stats" json:"-"`
 	Domains    []string `yaml:"domains" json:"domains"`
