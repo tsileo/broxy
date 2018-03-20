@@ -9,9 +9,10 @@ import (
 	"bytes"
 	"errors"
 	"net/http"
+	"net/url"
 )
 
-// ErrInvalidSubscriberArgs is returned when a client tries to subscribe without a channel or a callback
+// ErrInvalidSubscribeArgs is returned when a client tries to subscribe without a channel or a callback
 var ErrInvalidSubscribeArgs = errors.New("must provides at leat a channel or a callback func in order to subscribe")
 
 var (
@@ -21,7 +22,8 @@ var (
 
 // SSEClient holds the client state
 type SSEClient struct {
-	url string
+	url                string
+	Username, Password string
 }
 
 // Event holds the event fields
@@ -36,13 +38,23 @@ func New(url string) *SSEClient {
 }
 
 // Subscribe connects to the server-sent event endpoint.
-func (c *SSEClient) Subscribe(events chan<- *Event, callback func(*Event) error) error {
+func (c *SSEClient) Subscribe(events chan<- *Event, callback func(*Event) error, filterEvents ...string) error {
 	if events == nil && callback == nil {
 		return ErrInvalidSubscribeArgs
 	}
-	req, err := http.NewRequest("GET", c.url, nil)
+
+	vs := url.Values{}
+	for _, evt := range filterEvents {
+		vs.Add("event", evt)
+	}
+
+	req, err := http.NewRequest("GET", c.url+"?"+vs.Encode(), nil)
 	if err != nil {
 		return err
+	}
+
+	if c.Username != "" || c.Password != "" {
+		req.SetBasicAuth(c.Username, c.Password)
 	}
 
 	req.Header.Set("Accept", "text/event-stream")

@@ -25,10 +25,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
+	"github.com/lestrrat-go/file-rotatelogs"
 	"github.com/patrickmn/go-cache"
+	"github.com/tsileo/broxy/pkg/req"
 	"github.com/tsileo/defender"
 
 	"golang.org/x/crypto/acme/autocert"
@@ -40,12 +41,8 @@ import (
 )
 
 // TODO(tsileo):
-// - [ ] only trigger go redirector if ?go-get=1 is detected
 // - [ ] dynamic image resizing for static image
 // - [ ] PaaS like for static content assuming dns *.domain.com points to server
-// - [ ] Support creating new app via uploading zip app + broxy.yaml (on the same handler as stats)
-// - [ ] Lua app support (import from BlobStash, this feature will get removed in blobstash) (via a plugin?)
-// - [ ] Single file config
 // - [ ] Plugin support (for serving BlobStash FS?)
 
 type Interval int
@@ -159,9 +156,40 @@ type Proxy struct {
 	quit          chan struct{}
 	hostWhitelist map[string]bool
 	router        *mux.Router
+	adminMux      *mux.Router
 	sse           *server.SSEServer
 
 	sync.Mutex
+}
+
+func (p *Proxy) reset() error {
+	p.Lock()
+	defer p.Unlock()
+	for _, oldApp := range p.apps {
+		if err := oldApp.cleanup(); err != nil {
+			return err
+		}
+	}
+	p.apps = map[string]*App{}
+	p.hostIndex = map[string]*App{}
+	p.hostWhitelist = map[string]bool{}
+	newConf, err := loadBroxyConfig("broxy.yaml")
+	if err != nil {
+		return err
+	}
+
+	for _, app := range newConf.Apps {
+		if err := app.init(p); err != nil {
+			return err
+		}
+		p.apps[app.ID] = app
+		for _, domain := range app.Domains {
+			p.hostIndex[domain] = app
+			p.hostWhitelist[domain] = true
+		}
+	}
+
+	return nil
 }
 
 func (p *Proxy) appStats(i Interval) ([]*stats, error) {
@@ -189,6 +217,11 @@ func (p *Proxy) stats() map[string]interface{} {
 
 func (p *Proxy) hostPolicy() autocert.HostPolicy {
 	return func(_ context.Context, host string) error {
+		if p.conf.ExposeAdmin != nil {
+			if host == p.conf.ExposeAdmin.Domain {
+				return nil
+			}
+		}
 		if !p.hostWhitelist[host] {
 			return errors.New("blobstash: tls host not configured")
 		}
@@ -222,6 +255,11 @@ type App struct {
 	static http.Handler
 	app    *gluapp.App
 	p      *Proxy
+	log    *rotatelogs.RotateLogs
+}
+
+func (app *App) cleanup() error {
+	return app.log.Close()
 }
 
 func (app *App) init(p *Proxy) error {
@@ -239,6 +277,18 @@ func (app *App) init(p *Proxy) error {
 		app.static = http.FileServer(http.Dir(app.Path))
 	}
 	var err error
+
+	rl, err := rotatelogs.New(
+		filepath.Join(p.conf.LogsDir, app.ID+".log.%Y%m%d"),
+		rotatelogs.WithLinkName(filepath.Join(p.conf.LogsDir, app.ID+".log")),
+		rotatelogs.WithMaxAge(-1),
+		rotatelogs.WithRotationCount(7),
+	)
+	if err != nil {
+		return err
+	}
+	app.log = rl
+
 	if app.AppConfig != nil {
 		app.app, err = gluapp.NewApp(app.AppConfig)
 		if err != nil {
@@ -382,18 +432,22 @@ func (a *App) AuthEmpty() bool {
 	return a.Auth == nil || a.Auth.Username == "" && a.Auth.Password == ""
 }
 
-func (a *App) authFunc(req *http.Request) bool {
-	if a.AuthEmpty() {
+func checkAuth(a *Auth, req *http.Request) bool {
+	if a == nil || a.Username == "" && a.Password == "" {
 		return true
 	}
 	auth := req.Header.Get("Authorization")
 	if strings.HasPrefix(auth, "Basic ") {
-		siteAuth := base64.StdEncoding.EncodeToString([]byte(a.Auth.Username + ":" + a.Auth.Password))
+		siteAuth := base64.StdEncoding.EncodeToString([]byte(a.Username + ":" + a.Password))
 		if secureCompare(auth, "Basic "+siteAuth) {
 			return true
 		}
 	}
 	return false
+}
+
+func (a *App) authFunc(req *http.Request) bool {
+	return checkAuth(a.Auth, req)
 }
 
 // borrowed from https://golang.org/src/net/http/httputil/reverseproxy.go
@@ -429,6 +483,9 @@ func open(prox *Proxy, p string) (*App, error) {
 func (p *Proxy) deleteIndex(app *App) {
 	p.Lock()
 	defer p.Unlock()
+	if err := app.cleanup(); err != nil {
+		panic(err)
+	}
 	if oldApp, ok := p.apps[app.ID]; ok {
 		for _, oldDomain := range oldApp.Domains {
 			delete(p.hostWhitelist, oldDomain)
@@ -447,69 +504,6 @@ func (p *Proxy) updateIndex(app *App) {
 		p.hostIndex[domain] = app
 		p.hostWhitelist[domain] = true
 	}
-}
-
-func (p *Proxy) loadConfig() error {
-	// Initial config loading
-	d, err := os.Open("etc/proxy")
-	if err != nil {
-		panic(err)
-	}
-	fis, err := d.Readdir(-1)
-	for _, fi := range fis {
-		n := fi.Name()
-		if strings.HasSuffix(n, ".yaml") {
-			app, err := open(p, filepath.Join("etc/proxy", n))
-			if err != nil {
-				panic(err)
-			}
-			p.updateIndex(app)
-			log.Printf("loaded app %s", app.ID)
-		}
-	}
-	// fmt.Printf("apps=%+v\n", p.apps)
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer watcher.Close()
-
-	// Handle hot-reloading
-	done := make(chan bool)
-	go func() {
-		for {
-			select {
-			case <-p.quit:
-				return
-			case event := <-watcher.Events:
-				// log.Println("event:", event)
-				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-					// log.Println("modified file:", event.Name)
-					if strings.HasSuffix(event.Name, ".yaml") {
-						func() {
-							app, err := open(p, event.Name)
-							if err != nil {
-								panic(err)
-							}
-							log.Printf("app %s reloaded", app.ID)
-							p.updateIndex(app)
-						}()
-					}
-				}
-				// TODO(tsileo): handle remove
-			case err := <-watcher.Errors:
-				log.Println("error:", err)
-			}
-		}
-	}()
-
-	err = watcher.Add("./etc/proxy")
-	if err != nil {
-		log.Fatal(err)
-	}
-	<-done
-	return nil
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
@@ -581,10 +575,7 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 
 func (p *Proxy) serveAdminAPI() {
 	log.Printf("Starting admin API on 127.0.0.1:8021")
-	r := mux.NewRouter()
-	r.Handle("/pageviews", p.sse)
-	r.HandleFunc("/app/{appid}", p.apiAppHandler)
-	http.ListenAndServe("127.0.0.1:8021", r)
+	http.ListenAndServe("127.0.0.1:8021", p.adminMux)
 }
 
 func (p *Proxy) serve() {
@@ -744,8 +735,16 @@ type reqStats struct {
 }
 
 type broxyConfig struct {
-	AutoTLS bool   `yaml:"auto_tls"`
-	Listen  string `yaml:"listen"`
+	AutoTLS     bool                `yaml:"auto_tls"`
+	Listen      string              `yaml:"listen"`
+	Apps        []*App              `yaml:"apps"`
+	ExposeAdmin *exposeDomainConfig `yaml:"expose_admin"`
+	LogsDir     string              `yaml:"logs_dir"`
+}
+
+type exposeDomainConfig struct {
+	Domain string `yaml:"domain"`
+	Auth   *Auth  `yaml:"auth"`
 }
 
 func loadBroxyConfig(path string) (*broxyConfig, error) {
@@ -763,21 +762,6 @@ func loadBroxyConfig(path string) (*broxyConfig, error) {
 		return nil, err
 	}
 	return conf, nil
-}
-
-type Req struct {
-	AppID      string `json:"appid"`
-	RemoteAddr string `json:"remote_addr"`
-	UserAgent  string `json:"user_agent"`
-	Method     string `json:"method"`
-	Host       string `json:"host"`
-	URL        string `json:"url"`
-	Status     int    `json:"status"`
-	Referer    string `json:"referer"`
-	RespTime   string `json:"resp_time"`
-	RespSize   int    `json:"resp_size"`
-	Time       string `json:"time"`
-	Proto      string `json:"proto"`
 }
 
 func main() {
@@ -803,6 +787,13 @@ func main() {
 		// more than 50 reqs/s for 5min will cause a 12 hours ban
 		defender: defender.New(15000, 300*time.Second, 12*60*time.Minute),
 		conf:     conf,
+	}
+	p.adminMux = mux.NewRouter()
+	p.adminMux.Handle("/pageviews", p.sse)
+	p.adminMux.HandleFunc("/app/{appid}", p.apiAppHandler)
+
+	if err := p.reset(); err != nil {
+		panic(err)
 	}
 
 	q1 := make(chan struct{})
@@ -916,9 +907,11 @@ func main() {
 			duration := time.Since(start)
 			// TODO(tsileo): improve logging format
 			// FIXME(tsileo): put this in a middleware
-			ereq := &Req{
+			remoteAddr := strings.Split(r.RemoteAddr, ":")[0]
+			username, _, _ := r.BasicAuth()
+			ereq := &req.Req{
 				AppID:      app.ID,
-				RemoteAddr: r.RemoteAddr,
+				RemoteAddr: remoteAddr,
 				Proto:      r.Proto,
 				UserAgent:  ua,
 				Method:     r.Method,
@@ -929,9 +922,14 @@ func main() {
 				RespTime:   duration.String(),
 				RespSize:   w.written,
 				Time:       start.Format(time.RFC3339),
+				Username:   username,
 			}
-			log.Printf("%s %s %s - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\"", app.ID, duration, r.RemoteAddr, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
-				w.status, w.written, referer, ua)
+			if username == "" {
+				username = "-"
+			}
+			// TODO(tsileo): write to a special log file for each appid (without the appid/duration, or optioal?), create broxy-tail that uses this format
+			fmt.Printf("%s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
+				w.status, w.written, referer, ua, app.ID, duration)
 			evt, err := json.Marshal(ereq)
 			if err != nil {
 				panic(err)
@@ -984,37 +982,17 @@ func main() {
 			}
 		}
 
-		if r.URL.Path == "/_broxy_ui" {
-			t, err := template.New("ui.html").ParseFiles("ui.html")
-			if err != nil {
-				panic(err)
+		if conf.ExposeAdmin != nil {
+			if r.Host == conf.ExposeAdmin.Domain {
+				if checkAuth(conf.ExposeAdmin.Auth, r) {
+					p.adminMux.ServeHTTP(w, r)
+					return
+				} else {
+					w.WriteHeader(http.StatusUnauthorized)
+					w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
+					return
+				}
 			}
-			appStats, err := p.appStats(All)
-			if err != nil {
-				panic(err)
-			}
-			if err := t.Execute(w, map[string]interface{}{
-				"server": p.stats(),
-				"apps":   appStats,
-			}); err != nil {
-				panic(err)
-			}
-			return
-		}
-		// TODO(tsileo): use config to enable this
-		if r.URL.Path == "/_broxy_stats" {
-			data, err := app.stats(All)
-			if err != nil {
-				panic(err)
-			}
-			js, err := json.Marshal(data)
-			if err != nil {
-				http.Error(rw, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(js)
-			return
 		}
 
 		if app.app != nil {
@@ -1060,7 +1038,5 @@ func main() {
 		return
 
 	}))
-	go p.loadConfig()
 	p.serve()
-	// FIXME(tsileo): package to prevent bruteforce baisc auth, log bad ip auth and successful auth
 }

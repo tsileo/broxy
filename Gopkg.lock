@@ -29,13 +29,7 @@
     "pkg/client",
     "pkg/server"
   ]
-  revision = "e77458cb539631d6d259448cc6b77ea0a0dd7893"
-
-[[projects]]
-  name = "github.com/fsnotify/fsnotify"
-  packages = ["."]
-  revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
-  version = "v1.4.7"
+  revision = "5068a7ffdf47d352eca73bb78d621b7089a9dd72"
 
 [[projects]]
   branch = "master"
@@ -44,7 +38,7 @@
     "internal",
     "redis"
   ]
-  revision = "0b5cd0856798cbbcbd01e8240333e9eeadd337b9"
+  revision = "e8e59ed1cd89662b75af5d1109e39e5dc148cc00"
 
 [[projects]]
   branch = "master"
@@ -62,6 +56,12 @@
   version = "v1.0.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/google/subcommands"
+  packages = ["."]
+  revision = "a3682377147edf596d303faabd89f81977b3f678"
+
+[[projects]]
   name = "github.com/gorilla/context"
   packages = ["."]
   revision = "1ea25387ff6f684839d82767c1733ff4d4d15d0a"
@@ -72,6 +72,18 @@
   packages = ["."]
   revision = "53c1911da2b537f792e7cafcb446b05ffe33b996"
   version = "v1.6.1"
+
+[[projects]]
+  name = "github.com/lestrrat-go/file-rotatelogs"
+  packages = ["."]
+  revision = "9df8b44f21785240553882138c5df2e9cc1db910"
+  version = "v2.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/lestrrat/go-strftime"
+  packages = ["."]
+  revision = "ba3bf9c1d0421aa146564a632931730344f1f9f1"
 
 [[projects]]
   branch = "master"
@@ -90,6 +102,12 @@
   packages = ["."]
   revision = "a3647f8e31d79543b2d0f0ae2fe5c379d72cedc0"
   version = "v2.1.0"
+
+[[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
 
 [[projects]]
   branch = "master"
@@ -127,13 +145,7 @@
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "92b859f39abd2d91a854c9f9c4621b2f5054a92d"
-
-[[projects]]
-  branch = "master"
-  name = "golang.org/x/sys"
-  packages = ["unix"]
-  revision = "d8e400bc7db4870d786864138af681469693d18c"
+  revision = "6078986fec03a1dcc236c34816c71b0e05018fda"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -162,6 +174,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8341c4b41055e4a03d65bdf184fdb000b8c1319bd5fcc416097b80b3912b6388"
+  inputs-digest = "9c76f3b54382a2be890e3a5981405f33bd0aa0b1526180aca7ffbfe9c70beee8"
   solver-name = "gps-cdcl"
   solver-version = 1

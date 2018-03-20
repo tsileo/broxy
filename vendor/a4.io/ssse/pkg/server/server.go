@@ -115,6 +115,14 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var filter map[string]struct{}
+	if f := r.URL.Query().Get("event"); f != "" {
+		filter = map[string]struct{}{}
+		for _, evt := range r.URL.Query()["event"] {
+			filter[evt] = struct{}{}
+		}
+	}
+
 	eventsChan := make(chan *Event)
 
 	s.newClients <- eventsChan
@@ -144,6 +152,12 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !open {
 			// A closed channel means the client has disconnected
 			break
+		}
+
+		if filter != nil {
+			if _, ok := filter[event.Event]; !ok {
+				continue
+			}
 		}
 
 		// Write the response
