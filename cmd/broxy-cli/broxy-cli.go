@@ -12,8 +12,11 @@ import (
 	"github.com/tsileo/broxy/pkg/req"
 )
 
+// TODO(tsileo): a "reload" subcommand, a "info" subcommand
+
 type tailCmd struct {
 	host, apiKey string
+	appid        string
 }
 
 func (*tailCmd) Name() string     { return "tail" }
@@ -25,7 +28,7 @@ func (*tailCmd) Usage() string {
 }
 
 func (t *tailCmd) SetFlags(f *flag.FlagSet) {
-	//f.BoolVar(&p.capitalize, "capitalize", false, "capitalize output")
+	f.StringVar(&t.appid, "appid", "", "appid")
 }
 
 func (t *tailCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
@@ -33,13 +36,18 @@ func (t *tailCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 	c.Password = t.apiKey
 
 	req := &req.Req{}
+	filter := []string{}
+	if t.appid != "" {
+		filter = append(filter, t.appid)
+	}
 	if err := c.Subscribe(nil, func(e *client.Event) error {
 		if err := json.Unmarshal(e.Data, req); err != nil {
 			return err
 		}
+		// FIXME(tsileo): use ApacheFmt only if there's an appid od use the BroxyFmt
 		fmt.Printf(req.ApacheFmt())
 		return nil
-	}); err != nil {
+	}, filter...); err != nil {
 		panic(err)
 	}
 
@@ -58,7 +66,7 @@ func main() {
 	subcommands.Register(subcommands.HelpCommand(), "")
 	subcommands.Register(subcommands.FlagsCommand(), "")
 	subcommands.Register(subcommands.CommandsCommand(), "")
-	subcommands.Register(&tailCmd{host, apiKey}, "")
+	subcommands.Register(&tailCmd{host: host, apiKey: apiKey}, "")
 
 	flag.Parse()
 	ctx := context.Background()

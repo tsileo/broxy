@@ -525,6 +525,17 @@ func proxyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (p *Proxy) apiReloadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := p.reset(); err != nil {
+		panic(err)
+	}
+	log.Printf("config reloaded via HTTP")
+}
+
 func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	appID := vars["appid"]
@@ -802,6 +813,7 @@ func main() {
 	}
 	p.adminMux = mux.NewRouter()
 	p.adminMux.Handle("/pageviews", p.sse)
+	p.adminMux.HandleFunc("/reload", p.apiReloadHandler)
 	p.adminMux.HandleFunc("/app/{appid}", p.apiAppHandler)
 
 	if err := p.reset(); err != nil {
@@ -826,6 +838,7 @@ func main() {
 		amux := p.router.Host(conf.ExposeAdmin.Domain).Subrouter()
 		amux.Handle("/pageviews", adminAuthMiddleware(p.sse, p.conf))
 		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
+		amux.Handle("/reload", adminAuthMiddleware(http.HandleFunc(p.apiReloadHandler), p.conf))
 	}
 
 	p.router.NotFoundHandler = proxyMiddleware(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
