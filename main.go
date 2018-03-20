@@ -463,23 +463,6 @@ func singleJoiningSlash(a, b string) string {
 	return a + b
 }
 
-func open(prox *Proxy, p string) (*App, error) {
-	f, err := os.Open(p)
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	data, err := ioutil.ReadAll(f)
-	if err != nil {
-		panic(err)
-	}
-	app := &App{ID: filepath.Base(p)[0 : len(filepath.Base(p))-5]}
-	if err := yaml.Unmarshal(data, app); err != nil {
-		panic(err)
-	}
-	return app, app.init(prox)
-}
-
 func (p *Proxy) deleteIndex(app *App) {
 	p.Lock()
 	defer p.Unlock()
