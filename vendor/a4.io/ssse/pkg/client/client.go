@@ -34,7 +34,7 @@ type Event struct {
 
 // New initialize a new client
 func New(url string) *SSEClient {
-	return &SSEClient{url}
+	return &SSEClient{url: url}
 }
 
 // Subscribe connects to the server-sent event endpoint.

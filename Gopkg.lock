@@ -29,7 +29,7 @@
     "pkg/client",
     "pkg/server"
   ]
-  revision = "5068a7ffdf47d352eca73bb78d621b7089a9dd72"
+  revision = "f058f26f891ffe0e17591aadb209d9312836c2e8"
 
 [[projects]]
   branch = "master"
