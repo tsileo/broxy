@@ -838,7 +838,7 @@ func main() {
 		amux := p.router.Host(conf.ExposeAdmin.Domain).Subrouter()
 		amux.Handle("/pageviews", adminAuthMiddleware(p.sse, p.conf))
 		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
-		amux.Handle("/reload", adminAuthMiddleware(http.HandleFunc(p.apiReloadHandler), p.conf))
+		amux.Handle("/reload", adminAuthMiddleware(http.HandlerFunc(p.apiReloadHandler), p.conf))
 	}
 
 	p.router.NotFoundHandler = proxyMiddleware(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
