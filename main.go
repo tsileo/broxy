@@ -764,6 +764,18 @@ func loadBroxyConfig(path string) (*broxyConfig, error) {
 	return conf, nil
 }
 
+func adminAuthMiddleware(next http.Handler, conf *broxyConfig) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if checkAuth(conf.ExposeAdmin.Auth, r) {
+			next.ServeHTTP(w, r)
+		} else {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
+
+		}
+	})
+}
+
 func main() {
 	// TODO(tsileo): handle the config of the proxy
 	pool = newPool(":6379")
@@ -809,6 +821,13 @@ func main() {
 
 	// Bind to the NotFoundHandler to catch all the requests
 	// TODO(tsileo): make the rate limit configurable
+
+	if conf.ExposeAdmin != nil && conf.ExposeAdmin.Domain != "" {
+		amux := p.router.Host(conf.ExposeAdmin.Domain).Subrouter()
+		amux.Handle("/pageviews", adminAuthMiddleware(p.sse, p.conf))
+		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
+	}
+
 	p.router.NotFoundHandler = proxyMiddleware(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -981,20 +1000,6 @@ func main() {
 				return
 			}
 		}
-
-		if conf.ExposeAdmin != nil {
-			if r.Host == conf.ExposeAdmin.Domain {
-				if checkAuth(conf.ExposeAdmin.Auth, r) {
-					p.adminMux.ServeHTTP(w, r)
-					return
-				} else {
-					w.WriteHeader(http.StatusUnauthorized)
-					w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
-					return
-				}
-			}
-		}
-
 		if app.app != nil {
 
 			cacheable := app.Cache.CacheApp && (r.Method == "GET" || r.Method == "HEAD") && r.Header.Get("range") == ""
