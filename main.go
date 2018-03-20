@@ -772,6 +772,9 @@ func loadBroxyConfig(path string) (*broxyConfig, error) {
 	if err := yaml.Unmarshal(data, conf); err != nil {
 		return nil, err
 	}
+	if conf.LogsDir != "" {
+		conf.LogsDir, _ = filepath.Abs(conf.LogsDir)
+	}
 	return conf, nil
 }
 
