@@ -282,7 +282,7 @@ func (app *App) init(p *Proxy) error {
 		filepath.Join(p.conf.LogsDir, app.ID+".log.%Y%m%d"),
 		rotatelogs.WithLinkName(filepath.Join(p.conf.LogsDir, app.ID+".log")),
 		rotatelogs.WithMaxAge(-1),
-		rotatelogs.WithRotationCount(7),
+		rotatelogs.WithRotationCount(15), // TODO(tsileo): make it a config item
 	)
 	if err != nil {
 		return err
@@ -303,6 +303,9 @@ func (app *App) init(p *Proxy) error {
 		// borrowed from https://golang.org/src/net/http/httputil/reverseproxy.go
 		targetQuery := target.RawQuery
 		director := func(req *http.Request) {
+			req.Header.Set("Broxy-Req-Host", req.URL.Host)
+			req.Header.Set("Broxy-Req-Scheme", req.URL.Scheme)
+			req.Header.Set("Broxy-Req-Path", req.URL.Path)
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host
 			req.URL.Path = singleJoiningSlash(target.Path, req.URL.Path)
