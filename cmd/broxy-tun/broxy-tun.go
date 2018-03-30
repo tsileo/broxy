@@ -105,9 +105,6 @@ func main() {
 			app.Draw()
 		})
 
-		//	go func() {
-		//	}()
-
 	if err := registerApp(localPort, remotePort, name); err != nil {
 		panic(err)
 	}
@@ -136,24 +133,11 @@ func main() {
 				}
 				reqsLog += "[white]" + creq.ApacheFmt()
 			}
-			textView.SetText(dat + fmt.Sprintf("reqs: %d\nlast req: %+v\n%s", reqsCnt, req, reqsLog))
+			textView.SetText(dat + fmt.Sprintf("reqs: %d\n\n%s", reqsCnt, req, reqsLog))
 			return nil
 		}, fmt.Sprintf("tun-%s", remotePort))
 	}()
 	if err := app.SetRoot(textView, true).Run(); err != nil {
 		panic(err)
 	}
-
-	//cs := make(chan os.Signal, 1)
-	//signal.Notify(cs, os.Interrupt,
-	//	syscall.SIGINT,
-	//	syscall.SIGTERM,
-	//	syscall.SIGQUIT)
-	//for {
-	//	select {
-	//	case <-cs:
-	//		fmt.Println("quitting...")
-	//		return
-	//	}
-	//}
 }
