@@ -617,12 +617,9 @@ func (p *Proxy) serve() {
 			}()
 
 			s := &http.Server{
-				Addr:    ":https",
-				Handler: p.router,
-				// FIXME(tsileo): create a custom GetCertificate wrapper to log cert generatio in Redis
-				TLSConfig:    &tls.Config{GetCertificate: m.GetCertificate},
-				WriteTimeout: 15 * time.Second,
-				ReadTimeout:  15 * time.Second,
+				Addr:      ":https",
+				Handler:   p.router,
+				TLSConfig: &tls.Config{GetCertificate: m.GetCertificate},
 			}
 			s.ListenAndServeTLS("", "")
 		} else {
