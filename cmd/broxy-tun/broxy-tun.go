@@ -95,7 +95,7 @@ func main() {
 	name := args[2]
 
 	// FIXME(tsileo): make the appid tun-%name instead, and verify it does not exists
-	dat := header + fmt.Sprintf("\t%s.tun.a4.io -> localhost:%s\nappid: tun-%s\n", name, localPort, remotePort)
+	dat := header + fmt.Sprintf("\t%s.tun.a4.io -> localhost:%s\n\nappid: tun-%s\n", name, localPort, remotePort)
 
 	app := tview.NewApplication()
 	textView := tview.NewTextView().
