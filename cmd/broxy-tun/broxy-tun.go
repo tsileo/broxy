@@ -133,7 +133,7 @@ func main() {
 				}
 				reqsLog += "[white]" + creq.ApacheFmt()
 			}
-			textView.SetText(dat + fmt.Sprintf("reqs: %d\n\n%s", reqsCnt, req, reqsLog))
+			textView.SetText(dat + fmt.Sprintf("reqs: %d\n\n%s", reqsCnt, reqsLog))
 			return nil
 		}, fmt.Sprintf("tun-%s", remotePort))
 	}()
