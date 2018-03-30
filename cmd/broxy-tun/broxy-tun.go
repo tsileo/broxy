@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 
 	"a4.io/ssse/pkg/client"
 	"github.com/rivo/tview"
@@ -107,11 +105,8 @@ func main() {
 			app.Draw()
 		})
 
-	go func() {
-		if err := app.SetRoot(textView, true).Run(); err != nil {
-			panic(err)
-		}
-	}()
+		//	go func() {
+		//	}()
 
 	if err := registerApp(localPort, remotePort, name); err != nil {
 		panic(err)
@@ -120,6 +115,7 @@ func main() {
 	reqs := []*req.Req{}
 
 	go func() {
+		reqsCnt := 0
 		logLen := 10
 		c := client.New("http://localhost:8021/pageviews")
 		c.Subscribe(nil, func(msg *client.Event) error {
@@ -127,6 +123,7 @@ func main() {
 			if err := json.Unmarshal(msg.Data, req); err != nil {
 				return err
 			}
+			reqsCnt++
 			reqs = append(reqs, req)
 			if len(reqs) > logLen {
 				reqs = reqs[1 : logLen+1]
@@ -139,21 +136,24 @@ func main() {
 				}
 				reqsLog += "[white]" + creq.ApacheFmt()
 			}
-			textView.SetText(dat + fmt.Sprintf("reqs: %d\nlast req: %+v\n%s", len(reqs), req, reqsLog))
+			textView.SetText(dat + fmt.Sprintf("reqs: %d\nlast req: %+v\n%s", reqsCnt, req, reqsLog))
 			return nil
 		}, fmt.Sprintf("tun-%s", remotePort))
 	}()
-
-	cs := make(chan os.Signal, 1)
-	signal.Notify(cs, os.Interrupt,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGQUIT)
-	for {
-		select {
-		case <-cs:
-			fmt.Println("quitting...")
-			return
-		}
+	if err := app.SetRoot(textView, true).Run(); err != nil {
+		panic(err)
 	}
+
+	//cs := make(chan os.Signal, 1)
+	//signal.Notify(cs, os.Interrupt,
+	//	syscall.SIGINT,
+	//	syscall.SIGTERM,
+	//	syscall.SIGQUIT)
+	//for {
+	//	select {
+	//	case <-cs:
+	//		fmt.Println("quitting...")
+	//		return
+	//	}
+	//}
 }
