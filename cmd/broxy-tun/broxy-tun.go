@@ -12,6 +12,7 @@ import (
 
 	"a4.io/ssse/pkg/client"
 	"github.com/rivo/tview"
+	"github.com/tsileo/broxy/pkg/req"
 )
 
 type Stats struct {
@@ -93,7 +94,8 @@ func main() {
 	remotePort := args[1]
 	name := args[2]
 
-	dat := header + fmt.Sprintf("\t%s.tun.a4.io -> localhost:%s\n\n", name, localPort)
+	// FIXME(tsileo): make the appid tun-%name instead, and verify it does not exists
+	dat := header + fmt.Sprintf("\t%s.tun.a4.io -> localhost:%s\nappid: tun-%s\n", name, localPort, remotePort)
 
 	app := tview.NewApplication()
 	textView := tview.NewTextView().
@@ -115,15 +117,31 @@ func main() {
 		panic(err)
 	}
 	defer deleteApp(localPort, remotePort, name)
-	reqs := []*client.Event{}
+	reqs := []*req.Req{}
 
 	go func() {
+		logLen := 10
 		c := client.New("http://localhost:8021/pageviews")
 		c.Subscribe(nil, func(msg *client.Event) error {
-			reqs = append(reqs, msg)
-			textView.SetText(dat + fmt.Sprintf("reqs: %d\n\n%s", len(reqs), msg.Data))
+			req := &req.Req{}
+			if err := json.Unmarshal(msg.Data, req); err != nil {
+				return err
+			}
+			reqs = append(reqs, req)
+			if len(reqs) > logLen {
+				reqs = reqs[1 : logLen+1]
+			}
+			reqsLog := ""
+			for _, creq := range reqs {
+				if creq.Status >= 400 && creq.Status <= 500 {
+					reqsLog += "[red]" + creq.ApacheFmt()
+					continue
+				}
+				reqsLog += "[white]" + creq.ApacheFmt()
+			}
+			textView.SetText(dat + fmt.Sprintf("reqs: %d\n\n%s", len(reqs), reqsLog))
 			return nil
-		})
+		}, fmt.Sprintf("tun-%d", remotePort))
 	}()
 
 	cs := make(chan os.Signal, 1)
