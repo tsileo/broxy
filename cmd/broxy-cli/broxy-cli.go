@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
+	"strconv"
 
 	"a4.io/ssse/pkg/client"
 	"github.com/google/subcommands"
@@ -37,6 +39,16 @@ type freePortResp struct {
 }
 
 func (t *tunCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	if f.NArg() != 2 {
+		return subcommands.ExitUsageError
+	}
+
+	localPort, err := strconv.Atoi(f.Arg(0))
+	if err != nil {
+		panic(err)
+	}
+
+	// Query Broxy to get a free port on the remote server
 	req, err := http.NewRequest("POST", t.host+"/free_port", nil)
 	if err != nil {
 		panic(err)
@@ -50,7 +62,17 @@ func (t *tunCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) s
 	if err := json.NewDecoder(resp.Body).Decode(fresp); err != nil {
 		panic(err)
 	}
-	fmt.Printf("resp=%+v\n", fresp)
+	remotePort := fresp.FreePort
+	appid := f.Arg(1)
+
+	// Start the SSH tunnel, the server must have been configured to use broxy-tun as a shell
+	cmd := exec.Command("ssh", "-t", "-R", fmt.Sprintf("%d:localhost:%d", remotePort, localPort), "tun@"+t.host, strconv.Itoa(localPort), strconv.Itoa(remotePort), appid)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	if err := cmd.Run(); err != nil {
+		return subcommands.ExitFailure
+	}
+
 	return subcommands.ExitSuccess
 }
 
