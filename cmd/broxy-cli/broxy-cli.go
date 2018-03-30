@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 
 	"a4.io/ssse/pkg/client"
@@ -13,6 +14,45 @@ import (
 )
 
 // TODO(tsileo): a "reload" subcommand, a "info" subcommand
+
+type tunCmd struct {
+	host, apiKey string
+	subdomain    string
+	port         int
+}
+
+func (*tunCmd) Name() string     { return "tunnel" }
+func (*tunCmd) Synopsis() string { return "Create a SSH tunnel and a reverse proxy app to share it" }
+func (*tunCmd) Usage() string {
+	return `tunnel <port> <subdomain>:
+  Create a SSH tunnel and a reverse proxy app to share it.
+`
+}
+
+func (t *tunCmd) SetFlags(_ *flag.FlagSet) {
+}
+
+type freePortResp struct {
+	FreePort int `json:"free_port"`
+}
+
+func (t *tunCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	req, err := http.NewRequest("POST", t.host+"/free_port", nil)
+	if err != nil {
+		panic(err)
+	}
+	req.SetBasicAuth("", t.apiKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	fresp := &freePortResp{}
+	if err := json.NewDecoder(resp.Body).Decode(fresp); err != nil {
+		panic(err)
+	}
+	fmt.Printf("resp=%+v\n", fresp)
+	return subcommands.ExitSuccess
+}
 
 type tailCmd struct {
 	host, apiKey string
@@ -67,6 +107,7 @@ func main() {
 	subcommands.Register(subcommands.FlagsCommand(), "")
 	subcommands.Register(subcommands.CommandsCommand(), "")
 	subcommands.Register(&tailCmd{host: host, apiKey: apiKey}, "")
+	subcommands.Register(&tunCmd{host: host, apiKey: apiKey}, "")
 
 	flag.Parse()
 	ctx := context.Background()

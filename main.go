@@ -14,6 +14,7 @@ import (
 	"html/template"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -511,6 +512,25 @@ func proxyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (p *Proxy) apiFreePortHandler(w http.ResponseWriter, r *http.Request) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+	freePort := l.Addr().(*net.TCPAddr).Port
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"free_port": freePort}); err != nil {
+		panic(err)
+	}
+
+}
+
 func (p *Proxy) apiReloadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -804,6 +824,7 @@ func main() {
 	p.adminMux.Handle("/pageviews", p.sse)
 	p.adminMux.HandleFunc("/reload", p.apiReloadHandler)
 	p.adminMux.HandleFunc("/app/{appid}", p.apiAppHandler)
+	p.adminMux.HandleFunc("/free_port", p.apiFreePortHandler)
 
 	if err := p.reset(); err != nil {
 		panic(err)
@@ -828,6 +849,7 @@ func main() {
 		amux.Handle("/pageviews", adminAuthMiddleware(p.sse, p.conf))
 		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
 		amux.Handle("/reload", adminAuthMiddleware(http.HandlerFunc(p.apiReloadHandler), p.conf))
+		amux.Handle("/free_port", adminAuthMiddleware(http.HandlerFunc(p.apiFreePortHandler), p.conf))
 	}
 
 	p.router.NotFoundHandler = proxyMiddleware(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
