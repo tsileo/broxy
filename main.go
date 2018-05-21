@@ -599,6 +599,30 @@ func (p *Proxy) apiAppCacheHandler(w http.ResponseWriter, r *http.Request) {
 		panic("missing appid")
 	}
 	switch r.Method {
+	case "GET":
+		p.Lock()
+		defer p.Unlock()
+		app, ok := p.apps[appID]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		var enabled bool
+		keys := []string{}
+		if app.transport != nil {
+			enabled = true
+			for k, _ := range app.transport.cache.Items() {
+				keys = append(keys, k)
+			}
+
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"enabled": enabled,
+			"keys":    keys,
+		}); err != nil {
+			panic(err)
+		}
 	case "PURGE":
 		p.Lock()
 		defer p.Unlock()
