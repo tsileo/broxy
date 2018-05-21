@@ -149,8 +149,6 @@ type Proxy struct {
 	startedAt time.Time
 	reqs      uint64
 
-	cache *cache.Cache
-
 	authDefender *defender.Defender // brute force protection
 	defender     *defender.Defender
 
@@ -252,11 +250,12 @@ type App struct {
 	DisableSecurityHeaders bool              `yaml:"disable_security_headers" json:"-"`
 	AddHeaders             map[string]string `yaml:"add_headers" json:"add_headers"`
 
-	rproxy *httputil.ReverseProxy
-	static http.Handler
-	app    *gluapp.App
-	p      *Proxy
-	log    *rotatelogs.RotateLogs
+	rproxy    *httputil.ReverseProxy
+	transport *Transport
+	static    http.Handler
+	app       *gluapp.App
+	p         *Proxy
+	log       *rotatelogs.RotateLogs
 }
 
 func (app *App) cleanup() error {
@@ -317,8 +316,11 @@ func (app *App) init(p *Proxy) error {
 				req.URL.RawQuery = targetQuery + "&" + req.URL.RawQuery
 			}
 		}
-		transport := &Transport{app: app}
-		app.rproxy = &httputil.ReverseProxy{Director: director, Transport: transport}
+		app.transport = &Transport{
+			app:   app,
+			cache: cache.New(app.Cache.duration, 1*time.Minute),
+		}
+		app.rproxy = &httputil.ReverseProxy{Director: director, Transport: app.transport}
 	}
 	return nil
 }
@@ -590,6 +592,32 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (p *Proxy) apiAppCacheHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appid"]
+	if appID == "" {
+		panic("missing appid")
+	}
+	switch r.Method {
+	case "PURGE":
+		p.Lock()
+		defer p.Unlock()
+		app, ok := p.apps[appID]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if app.transport == nil {
+			w.WriteHeader(http.StatusBadRequest)
+
+		}
+		app.transport.FlushCache()
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 func (p *Proxy) serveAdminAPI() {
 	log.Printf("Starting admin API on 127.0.0.1:8021")
 	http.ListenAndServe("127.0.0.1:8021", p.adminMux)
@@ -648,7 +676,8 @@ func (p *Proxy) tillShutdown() {
 }
 
 type Transport struct {
-	app *App
+	cache *cache.Cache
+	app   *App
 	// The RoundTripper interface actually used to make requests
 	// If nil, http.DefaultTransport is used
 	Transport http.RoundTripper
@@ -658,17 +687,21 @@ func (t *Transport) cacheKey(req *http.Request) string {
 	return fmt.Sprintf("proxy:%s", req.URL.String())
 }
 
+func (t *Transport) FlushCache() {
+	t.cache.Flush()
+}
+
 func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	transport := t.Transport
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
 
-	cacheable := t.app.Cache.CacheProxy && (req.Method == "GET" || req.Method == "HEAD") && req.Header.Get("range") == ""
+	cacheable := t.app.Cache.CacheProxy && (req.Method == "GET" || req.Method == "HEAD") && req.Header.Get("range") == "" && len(req.Cookies()) == 0
 	// FIXME(tsileo): handle caching header
 
 	if cacheable {
-		if data, ok := p.cache.Get(t.cacheKey(req)); ok {
+		if data, ok := t.cache.Get(t.cacheKey(req)); ok {
 			b := bytes.NewBuffer(data.([]byte))
 			resp, err := http.ReadResponse(bufio.NewReader(b), req)
 			resp.Header.Set("X-Cache", "HIT")
@@ -683,12 +716,13 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 	}
 
 	_, shouldCache := t.app.Cache.statusCodeIndex[resp.StatusCode]
+	shouldCache = shouldCache && len(resp.Cookies()) == 0
 	if cacheable && shouldCache {
 		dumpedResp, err := httputil.DumpResponse(resp, true)
 		if err != nil {
 			return nil, err
 		}
-		p.cache.Set(t.cacheKey(req), dumpedResp, t.app.Cache.duration)
+		t.cache.Set(t.cacheKey(req), dumpedResp, t.app.Cache.duration)
 		resp.Header.Set("X-Cache", "MISS")
 	}
 
@@ -807,7 +841,6 @@ func main() {
 		apps:          map[string]*App{},
 		hostIndex:     map[string]*App{},
 		startedAt:     time.Now(),
-		cache:         cache.New(30*time.Minute, 1*time.Minute),
 		quit:          make(chan struct{}),
 		router:        mux.NewRouter(),
 		hostWhitelist: map[string]bool{},
@@ -821,6 +854,7 @@ func main() {
 	p.adminMux.Handle("/pageviews", p.sse)
 	p.adminMux.HandleFunc("/reload", p.apiReloadHandler)
 	p.adminMux.HandleFunc("/app/{appid}", p.apiAppHandler)
+	p.adminMux.HandleFunc("/app/{appid}/cache", p.apiAppCacheHandler)
 	p.adminMux.HandleFunc("/free_port", p.apiFreePortHandler)
 
 	if err := p.reset(); err != nil {
@@ -845,6 +879,7 @@ func main() {
 		amux := p.router.Host(conf.ExposeAdmin.Domain).Subrouter()
 		amux.Handle("/pageviews", adminAuthMiddleware(p.sse, p.conf))
 		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
+		amux.Handle("/app/{appid}/cache", adminAuthMiddleware(http.HandlerFunc(p.apiAppCacheHandler), p.conf))
 		amux.Handle("/reload", adminAuthMiddleware(http.HandlerFunc(p.apiReloadHandler), p.conf))
 		amux.Handle("/free_port", adminAuthMiddleware(http.HandlerFunc(p.apiFreePortHandler), p.conf))
 	}
@@ -1024,29 +1059,30 @@ func main() {
 		}
 		if app.app != nil {
 
-			cacheable := app.Cache.CacheApp && (r.Method == "GET" || r.Method == "HEAD") && r.Header.Get("range") == ""
+			// FIXME(tsileo): store a cache.Cache in the app
+			//cacheable := app.Cache.CacheApp && (r.Method == "GET" || r.Method == "HEAD") && r.Header.Get("range") == ""
 			// FIXME(tsileo): handle caching header
 
-			if cacheable {
-				if iresp, ok := p.cache.Get(fmt.Sprintf("app:%v:app:%v", app.ID, r.URL.String())); ok {
-					resp := iresp.(*gluapp.Response)
-					resp.Header.Set("X-Cache", "HIT")
-					resp.WriteTo(rw)
-					return
-				}
-			}
+			//if cacheable {
+			//	if iresp, ok := p.cache.Get(fmt.Sprintf("app:%v:app:%v", app.ID, r.URL.String())); ok {
+			//		resp := iresp.(*gluapp.Response)
+			//		resp.Header.Set("X-Cache", "HIT")
+			//		resp.WriteTo(rw)
+			//		return
+			//	}
+			//}
 
 			resp, err := app.app.Exec(w, r)
 			if err != nil {
 				panic(err)
 			}
-			resp.Header.Set("X-Cache", "MISS")
+			//resp.Header.Set("X-Cache", "MISS")
 			resp.WriteTo(w)
 
-			_, shouldCache := app.Cache.statusCodeIndex[resp.StatusCode]
-			if cacheable && shouldCache {
-				p.cache.Set(fmt.Sprintf("app:%v:app:%v", app.ID, r.URL.String()), resp, app.Cache.duration)
-			}
+			//_, shouldCache := app.Cache.statusCodeIndex[resp.StatusCode]
+			//if cacheable && shouldCache {
+			//	p.cache.Set(fmt.Sprintf("app:%v:app:%v", app.ID, r.URL.String()), resp, app.Cache.duration)
+			//}
 
 			return
 		}
