@@ -14,3 +14,21 @@ The most friendly proxy ever!
  - Add security headers on the fly
  - Automatically ban IPs that make too many requests
  - Simple YAML configuration format with hot-reloading
+
+
+# Development
+
+Here is a sample local development file, the trick is to listen to localhost and use the same address to bind an app.
+
+```yaml
+auto_tls: false
+listen: 'localhost:8020'
+apps:
+ - id: 'blog'
+   domains:
+    - 'localhost:8020'
+   proxy: 'http://localhost:5005/'
+   cache:
+     cache_proxy: true
+     time: 12h
+```
