@@ -337,9 +337,9 @@ func (app *App) init(p *Proxy) error {
 	if app.SyslogPort > 0 {
 		fmt.Printf("spawning syslog server at :%d for app %v\n", app.SyslogPort, app.ID)
 		app.syslogShutdown = spawnSyslogHandler(app.SyslogPort, func(m *syslog.Message) error {
-			logLine := "syslog - " + m.String()
+			logLine := "syslog - " + m.String() + "\n"
 			app.log.Write([]byte(logLine))
-			fmt.Printf("%s\n", logLine)
+			fmt.Printf(logLine)
 			return nil
 		})
 	}
