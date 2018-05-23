@@ -11,6 +11,7 @@ The most friendly proxy ever!
  - Optional built-in analytics with a web UI (Redis required)
  - Optional in-memory caching support
  - Spawn a syslog server for your app and get the logs merged with the requests
+ - Docker compose integration
  - HTTP basic authentication support with brute force protection
  - Add security headers on the fly
  - Automatically ban IPs that make too many requests

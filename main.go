@@ -26,6 +26,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/docker/libcompose/docker"
+	"github.com/docker/libcompose/docker/ctx"
+	"github.com/docker/libcompose/project"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"github.com/lestrrat-go/file-rotatelogs"
@@ -280,6 +283,9 @@ type App struct {
 	SyslogPort     int `yaml:"syslog_port" json:"syslog_port"`
 	syslogShutdown func()
 
+	DockerComposeFile    string `yaml:"docker_compose_file" json:"-"`
+	DockerComposeProject string `yaml:"docker_compose_project" json:"-"`
+
 	// Move this to `static_files`
 	Path string `yaml:"path" json:"-"`
 
@@ -337,7 +343,14 @@ func (app *App) init(p *Proxy) error {
 	if app.SyslogPort > 0 {
 		fmt.Printf("spawning syslog server at :%d for app %v\n", app.SyslogPort, app.ID)
 		app.syslogShutdown = spawnSyslogHandler(app.SyslogPort, func(m *syslog.Message) error {
-			logLine := "syslog - " + m.String() + "\n"
+			var logLine string
+			if strings.HasPrefix(m.Hostname, "broxy-docker/") {
+				t := m.Time.Format("2006-01-02 15:04:05")
+				parts := strings.Split(m.Hostname, "/")
+				logLine = fmt.Sprintf("docker-compose - %s - %s - %s %s \n", parts[1], t, strings.Join(parts[2:], "/"), m.Content)
+			} else {
+				logLine = "syslog - " + m.String() + "\n"
+			}
 			app.log.Write([]byte(logLine))
 			fmt.Printf(logLine)
 			return nil
@@ -651,6 +664,54 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (p *Proxy) apiAppDockerComposeHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appid"]
+	if appID == "" {
+		panic("missing appid")
+	}
+	switch r.Method {
+	case "GET":
+		p.Lock()
+		defer p.Unlock()
+		app, ok := p.apps[appID]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		var infos project.InfoSet
+		if app.DockerComposeFile != "" {
+			pctx := project.Context{
+				ComposeFiles: []string{app.DockerComposeFile},
+			}
+			if app.DockerComposeProject != "" {
+				pctx.ProjectName = app.DockerComposeProject
+			}
+			project, err := docker.NewProject(&ctx.Context{
+				Context: pctx,
+			}, nil)
+			if err != nil {
+				panic(err)
+			}
+
+			infos, err = project.Ps(context.Background())
+			if err != nil {
+				panic(err)
+			}
+			// TODO(tsileo): un-capitalize the keys
+		}
+
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"ps": infos,
+		}); err != nil {
+			panic(err)
+		}
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 func (p *Proxy) apiAppCacheHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	appID := vars["appid"]
@@ -938,6 +999,7 @@ func main() {
 	p.adminMux.HandleFunc("/reload", p.apiReloadHandler)
 	p.adminMux.HandleFunc("/app/{appid}", p.apiAppHandler)
 	p.adminMux.HandleFunc("/app/{appid}/cache", p.apiAppCacheHandler)
+	p.adminMux.HandleFunc("/app/{appid}/docker_compose", p.apiAppDockerComposeHandler)
 	p.adminMux.HandleFunc("/free_port", p.apiFreePortHandler)
 
 	if err := p.reset(); err != nil {
@@ -963,6 +1025,7 @@ func main() {
 		amux.Handle("/pageviews", adminAuthMiddleware(p.sse, p.conf))
 		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
 		amux.Handle("/app/{appid}/cache", adminAuthMiddleware(http.HandlerFunc(p.apiAppCacheHandler), p.conf))
+		amux.Handle("/app/{appid}/docker_compose", adminAuthMiddleware(http.HandlerFunc(p.apiAppDockerComposeHandler), p.conf))
 		amux.Handle("/reload", adminAuthMiddleware(http.HandlerFunc(p.apiReloadHandler), p.conf))
 		amux.Handle("/free_port", adminAuthMiddleware(http.HandlerFunc(p.apiFreePortHandler), p.conf))
 	}
