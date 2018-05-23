@@ -32,6 +32,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/tsileo/broxy/pkg/req"
 	"github.com/tsileo/defender"
+	"github.com/ziutek/syslog"
 
 	"golang.org/x/crypto/acme/autocert"
 
@@ -228,6 +229,44 @@ func (p *Proxy) hostPolicy() autocert.HostPolicy {
 	}
 }
 
+type syslogHandler struct {
+	// To simplify implementation of our handler we embed helper
+	// syslog.BaseHandler struct.
+	*syslog.BaseHandler
+	handler func(m *syslog.Message) error
+}
+
+// Simple fiter for named/bind messages which can be used with BaseHandler
+func filter(m *syslog.Message) bool {
+	return true
+}
+
+func newSyslogHandler(handler func(m *syslog.Message) error) *syslogHandler {
+	h := syslogHandler{syslog.NewBaseHandler(5, filter, false), handler}
+	go h.mainLoop() // BaseHandler needs some gorutine that reads from its queue
+	return &h
+}
+
+// mainLoop reads from BaseHandler queue using h.Get and logs messages to stdout
+func (h *syslogHandler) mainLoop() {
+	for {
+		m := h.Get()
+		if m == nil {
+			break
+		}
+		h.handler(m)
+	}
+	h.End()
+}
+
+func spawnSyslogHandler(port int, handler func(m *syslog.Message) error) func() {
+	// Create a server with one handler and run one listen gorutine
+	s := syslog.NewServer()
+	s.AddHandler(newSyslogHandler(handler))
+	s.Listen(fmt.Sprintf("127.0.0.1:%d", port))
+	return s.Shutdown
+}
+
 type App struct {
 	ID         string   `yaml:"id" json:"appid"`
 	Name       string   `yaml:"name" json:"name"`
@@ -237,6 +276,9 @@ type App struct {
 	GoRedirectors goRedirectors `yaml:"go_redirectors" json:"-"`
 
 	Proxy string `yaml:"proxy" json:"proxy"`
+
+	SyslogPort     int `yaml:"syslog_port" json:"syslog_port"`
+	syslogShutdown func()
 
 	// Move this to `static_files`
 	Path string `yaml:"path" json:"-"`
@@ -259,6 +301,9 @@ type App struct {
 }
 
 func (app *App) cleanup() error {
+	if app.syslogShutdown != nil {
+		app.syslogShutdown()
+	}
 	return app.log.Close()
 }
 
@@ -288,6 +333,16 @@ func (app *App) init(p *Proxy) error {
 		return err
 	}
 	app.log = rl
+
+	if app.SyslogPort > 0 {
+		fmt.Printf("spawning syslog server at :%d for app %v\n", app.SyslogPort, app.ID)
+		app.syslogShutdown = spawnSyslogHandler(app.SyslogPort, func(m *syslog.Message) error {
+			logLine := "syslog - " + m.String()
+			app.log.Write([]byte(logLine))
+			fmt.Printf("%s\n", logLine)
+			return nil
+		})
+	}
 
 	if app.AppConfig != nil {
 		app.app, err = gluapp.NewApp(app.AppConfig)
@@ -514,7 +569,7 @@ func proxyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (p *Proxy) apiFreePortHandler(w http.ResponseWriter, r *http.Request) {
+func getFreePort() int {
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
 	if err != nil {
 		panic(err)
@@ -525,7 +580,11 @@ func (p *Proxy) apiFreePortHandler(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	defer l.Close()
-	freePort := l.Addr().(*net.TCPAddr).Port
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+func (p *Proxy) apiFreePortHandler(w http.ResponseWriter, r *http.Request) {
+	freePort := getFreePort()
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{"free_port": freePort}); err != nil {
 		panic(err)
@@ -1027,8 +1086,8 @@ func main() {
 				username = "-"
 			}
 			// TODO(tsileo): write to a special log file for each appid (without the appid/duration, or optioal?), create broxy-tail that uses this format
-			app.log.Write([]byte(ereq.ApacheFmt()))
-			fmt.Printf("%s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
+			app.log.Write([]byte("req - " + ereq.ApacheFmt()))
+			fmt.Printf("req - %s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
 				w.status, w.written, referer, ua, app.ID, duration)
 			evt, err := json.Marshal(ereq)
 			if err != nil {

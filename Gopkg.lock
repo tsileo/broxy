@@ -5,7 +5,7 @@
   branch = "master"
   name = "a4.io/blobstash"
   packages = ["pkg/apps/luautil"]
-  revision = "98c841336f0089e6d4b4c98d1f8fa873d6a6b8d2"
+  revision = "50818ef6c9f312492bd87f23993cb99e0d4b6df9"
 
 [[projects]]
   branch = "master"
@@ -38,7 +38,7 @@
     "internal",
     "redis"
   ]
-  revision = "e8e59ed1cd89662b75af5d1109e39e5dc148cc00"
+  revision = "569eae59ada904ea8db7a225c2b47165af08735a"
 
 [[projects]]
   branch = "master"
@@ -64,14 +64,14 @@
 [[projects]]
   name = "github.com/gorilla/context"
   packages = ["."]
-  revision = "1ea25387ff6f684839d82767c1733ff4d4d15d0a"
-  version = "v1.1"
+  revision = "08b5f424b9271eedf6f9f0ce86cb9396ed337a42"
+  version = "v1.1.1"
 
 [[projects]]
   name = "github.com/gorilla/mux"
   packages = ["."]
-  revision = "53c1911da2b537f792e7cafcb446b05ffe33b996"
-  version = "v1.6.1"
+  revision = "e3702bed27f0d39777b0b37b664b6280e8ef8fbf"
+  version = "v1.6.2"
 
 [[projects]]
   branch = "master"
@@ -80,19 +80,19 @@
     ".",
     "internal/option"
   ]
-  revision = "31912ebef06aac4686da7aea6c11cdf430285a0f"
+  revision = "81893a53aa4f78667bfe43dc2e966f5ba894383c"
 
 [[projects]]
   branch = "master"
   name = "github.com/lestrrat-go/strftime"
   packages = ["."]
-  revision = "9948d03c6207ada6a27c7b43405f8dee04a8439e"
+  revision = "59966ecb6d84ec0010de6a5b8deae0299ce5b549"
 
 [[projects]]
   branch = "master"
   name = "github.com/lucasb-eyer/go-colorful"
   packages = ["."]
-  revision = "231272389856c976b7500c4fffcc52ddf06ff4eb"
+  revision = "4bd2e4822bdff5de5bf1852034c02084724ebdec"
 
 [[projects]]
   name = "github.com/mattn/go-runewidth"
@@ -116,7 +116,7 @@
   branch = "master"
   name = "github.com/rivo/tview"
   packages = ["."]
-  revision = "761e3d72da6c156aff91324b479f5cbf2272f53f"
+  revision = "bb80ad41aae697b9c1a4213ab0c4f500cfbf659b"
 
 [[projects]]
   branch = "master"
@@ -133,7 +133,13 @@
     "parse",
     "pm"
   ]
-  revision = "84ea3a3c79b3c4b3b39606cc96f255cd63635ce0"
+  revision = "b0fa786cf4ea360285924c4a7fd42325be57aec8"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/ziutek/syslog"
+  packages = ["."]
+  revision = "8a9fdf1a8529f4c4639db50844d2bf1d2a25ce77"
 
 [[projects]]
   branch = "master"
@@ -142,13 +148,13 @@
     "acme",
     "acme/autocert"
   ]
-  revision = "c3a3ad6d03f7a915c0f7e194b7152974bb73d287"
+  revision = "da3eeb5d875662f3bb9f79df58788d0d44b8d2fd"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "6078986fec03a1dcc236c34816c71b0e05018fda"
+  revision = "9ef9f5bb98a1fdc41f8cf6c250a4404b4085e389"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -166,17 +172,17 @@
   branch = "master"
   name = "golang.org/x/time"
   packages = ["rate"]
-  revision = "26559e0f760e39c24d730d3224364aef164ee23f"
+  revision = "fbb02b2291d28baffd63558aa44b4b56f178d650"
 
 [[projects]]
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "7f97868eec74b32b0982dd158a51a446d1da7eb5"
-  version = "v2.1.1"
+  revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
+  version = "v2.2.1"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "af3870477954582e43bfcaf3e3dfd4a6064f9527b51dcb616a3f21383c5de27b"
+  inputs-digest = "b7fe752fd68e684a10ac290a9539721769382ff0583e95645f5c1fa9b5096662"
   solver-name = "gps-cdcl"
   solver-version = 1
