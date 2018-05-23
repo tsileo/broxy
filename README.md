@@ -10,6 +10,7 @@ The most friendly proxy ever!
  - Automatic TLS certificate management (creation,renewal) via [Let's Encrypt](https://letsencrypt.org/)
  - Optional built-in analytics with a web UI (Redis required)
  - Optional in-memory caching support
+ - Spawn a syslog server for your app and get the logs merged with the requests
  - HTTP basic authentication support with brute force protection
  - Add security headers on the fly
  - Automatically ban IPs that make too many requests
