@@ -860,6 +860,7 @@ func (rw *responseWriter) Header() http.Header {
 
 func (rw *responseWriter) Write(data []byte) (int, error) {
 	rw.written += len(data)
+	// TODO(tsileo): buffer the data, try to parse it if it's HTML to extract the title for analytics
 	return rw.rw.Write(data)
 }
 
@@ -1073,6 +1074,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
+
 			if city.City.GeoNameID != 0 {
 				ereq.GeoIPCity = city.City.Names["en"]
 				ereq.GeoIPCountry = city.Country.Names["en"]
@@ -1080,7 +1082,6 @@ func main() {
 				ereq.GeoIPRegion = city.Subdivisions[0].Names["en"]
 				ereq.GeoIPRegionCode = city.Subdivisions[0].IsoCode
 				ereq.GeoIPLatLong = fmt.Sprintf("%v,%v", city.Location.Latitude, city.Location.Longitude)
-
 				// If the proxy is enabled, add the geoip in the request header
 				if app.rproxy != nil {
 					r.Header.Add("Broxy-GeoIP-City", ereq.GeoIPCity)
@@ -1108,25 +1109,29 @@ func main() {
 
 		// Update the topdb
 		if err := app.tdb.IncrAll(start, topdb.TopPageview, topdb.App, 1); err != nil {
-			return err
+			panic(err)
 		}
 		if err := app.tdb.IncrAll(start, topdb.TopPageview, r.URL.Path, 1); err != nil {
-			return err
+			panic(err)
 		}
 		if err := app.tdb.IncrAll(start, topdb.TopReferer, referer, 1); err != nil {
-			return err
+			panic(err)
 		}
-		// TODO(tsileo): top country and stop status code
-
-		if client, ok := p.defender.Client(r.RemoteAddr); ok && client.Banned() {
-			w.WriteHeader(http.StatusForbidden)
-			return
+		if err := app.tdb.IncrAll(start, topdb.TopHost, r.Host, 1); err != nil {
+			panic(err)
 		}
-		if banned := p.defender.Inc(r.RemoteAddr); banned {
-			// TODO(tsileo): log the ban in redis
-			w.WriteHeader(http.StatusForbidden)
-			return
+		if err := app.tdb.IncrAll(start, topdb.TopStatus, string(w.status), 1); err != nil {
+			panic(err)
 		}
+		if err := app.tdb.IncrAll(start, topdb.TopDuration, topdb.App, uint64(duration)); err != nil {
+			panic(err)
+		}
+		if app.p.geoIPDB != nil {
+			if err := app.tdb.IncrAll(start, topdb.TopCountry, ereq.GeoIPCountryCode, 1); err != nil {
+				panic(err)
+			}
+		}
+		// TODO(tsileo): cache hit/miss?
 
 		// First handle auth
 		client, ok := p.authDefender.Client(r.RemoteAddr)

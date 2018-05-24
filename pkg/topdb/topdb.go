@@ -28,8 +28,13 @@ var iToFmt = map[Interval]string{
 }
 
 var (
-	TopPageview = "pv"
-	TopReferer  = "referer"
+	TopPageview   = "pv"
+	TopReferer    = "referer"
+	TopStatusCode = "status"
+	TopCountry    = "country"
+	TopHost       = "host"
+	TopStatus     = "status"
+	TopDuration   = "duration"
 )
 
 var (
