@@ -31,7 +31,9 @@ import (
 	"github.com/lestrrat-go/file-rotatelogs"
 	geoip2 "github.com/oschwald/geoip2-golang"
 	"github.com/patrickmn/go-cache"
+	"github.com/tsileo/broxy/pkg/eventsdb"
 	"github.com/tsileo/broxy/pkg/req"
+	"github.com/tsileo/broxy/pkg/topdb"
 	"github.com/tsileo/defender"
 	"github.com/ziutek/syslog"
 
@@ -304,12 +306,16 @@ type App struct {
 	app       *gluapp.App
 	p         *Proxy
 	log       *rotatelogs.RotateLogs
+	edb       *eventsdb.EventsDB
+	tdb       *topdb.TopDB
 }
 
 func (app *App) cleanup() error {
 	if app.syslogShutdown != nil {
 		app.syslogShutdown()
 	}
+	app.edb.Close()
+	app.tdb.Close()
 	return app.log.Close()
 }
 
@@ -328,6 +334,16 @@ func (app *App) init(p *Proxy) error {
 		app.static = http.FileServer(http.Dir(app.Path))
 	}
 	var err error
+
+	app.edb, err = eventsdb.New(fmt.Sprintf("./broxy_analytics/%s.events.db", app.ID))
+	if err != nil {
+		return err
+	}
+
+	app.tdb, err = topdb.New(fmt.Sprintf("./broxy_analytics/%s.tops.db", app.ID))
+	if err != nil {
+		return err
+	}
 
 	rl, err := rotatelogs.New(
 		filepath.Join(p.conf.LogsDir, app.ID+".log.%Y%m%d"),
@@ -803,6 +819,12 @@ func (p *Proxy) serve() {
 		}
 	}()
 	p.tillShutdown()
+	for _, app := range p.apps {
+		if err := app.cleanup(); err != nil {
+			fmt.Printf("failed to cleanup %v: %v\n", app.ID, err)
+		}
+	}
+	fmt.Printf("clean shutdown\n")
 }
 
 func (p *Proxy) tillShutdown() {
@@ -989,6 +1011,12 @@ func main() {
 	conf, err := loadBroxyConfig("broxy.yaml")
 	if err != nil {
 		panic(err)
+	}
+	analyticsDB := "./broxy_analytics"
+	if _, err := os.Stat(analyticsDB); os.IsNotExist(err) {
+		if err := os.MkdirAll(analyticsDB, 0700); err != nil {
+			panic(err)
+		}
 	}
 	sseServer := server.New()
 	sseServer.Start()
