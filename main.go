@@ -709,6 +709,7 @@ func (p *Proxy) apiAppCacheHandler(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 	case "PURGE":
+		// TODO(tsileo): fire an event
 		p.Lock()
 		defer p.Unlock()
 		app, ok := p.apps[appID]
@@ -1033,16 +1034,7 @@ func main() {
 		ourl := r.URL.String()
 		// FIXME(tsileo): only one config file
 
-		referer := ""
-		if oreferer := r.Header.Get("Referer"); oreferer != "" {
-			uref, err := url.Parse(oreferer)
-			if err == nil {
-				if uref.Host != r.Host {
-					referer = oreferer
-				}
-			}
-		}
-
+		referer := r.Header.Get("Referer")
 		ua := r.Header.Get("User-Agent")
 		w := &responseWriter{
 			app:    app,
@@ -1113,7 +1105,18 @@ func main() {
 			panic(err)
 		}
 		p.sse.Publish(app.ID, evt)
-		//	}()
+
+		// Update the topdb
+		if err := app.tdb.IncrAll(start, topdb.TopPageview, topdb.App, 1); err != nil {
+			return err
+		}
+		if err := app.tdb.IncrAll(start, topdb.TopPageview, r.URL.Path, 1); err != nil {
+			return err
+		}
+		if err := app.tdb.IncrAll(start, topdb.TopReferer, referer, 1); err != nil {
+			return err
+		}
+		// TODO(tsileo): top country and stop status code
 
 		if client, ok := p.defender.Client(r.RemoteAddr); ok && client.Banned() {
 			w.WriteHeader(http.StatusForbidden)

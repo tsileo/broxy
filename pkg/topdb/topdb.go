@@ -27,6 +27,15 @@ var iToFmt = map[Interval]string{
 	Day:   "2006-01-02",
 }
 
+var (
+	TopPageview = "pv"
+	TopReferer  = "referer"
+)
+
+var (
+	App = "app"
+)
+
 func fmtTime(i Interval, t time.Time) string {
 	if i == All {
 		return ""
@@ -90,6 +99,14 @@ func (db *TopDB) Incr(i Interval, t time.Time, top, key string, value uint64) er
 	binary.BigEndian.PutUint64(v[:], cval+value)
 	copy(v[8:], []byte(key))
 	return db.rdb.Set(k, v)
+}
+func (db *TopDB) IncrAll(t time.Time, top, key string, value uint64) error {
+	for _, interval := range Intervals {
+		if err := db.Incr(interval, t, top, key, value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type TopEntry struct {
