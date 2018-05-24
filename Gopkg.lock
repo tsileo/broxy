@@ -88,15 +88,6 @@
   revision = "0bce6a6887123b67a60366d2c9fe2dfb74289d2e"
 
 [[projects]]
-  name = "github.com/garyburd/redigo"
-  packages = [
-    "internal",
-    "redis"
-  ]
-  revision = "a69d19351219b6dd56f274f96d85a7014a2ec34e"
-  version = "v1.6.0"
-
-[[projects]]
   branch = "master"
   name = "github.com/gdamore/encoding"
   packages = ["."]
@@ -291,6 +282,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "76681239e5e3dd290abc407ea183d4b3c2b87ebcdcb2623eeded045deebc64d5"
+  inputs-digest = "6f7afe4f6cb6b6c8f7cc1af5c2bbf38e3a6f6f67e80f74f9d72e9819e14012e0"
   solver-name = "gps-cdcl"
   solver-version = 1

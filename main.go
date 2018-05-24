@@ -26,7 +26,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"github.com/lestrrat-go/file-rotatelogs"
 	geoip2 "github.com/oschwald/geoip2-golang"
@@ -50,40 +49,7 @@ import (
 // - [ ] PaaS like for static content assuming dns *.domain.com points to server
 // - [ ] Plugin support (for serving BlobStash FS?)
 
-type Interval int
-
-const (
-	All Interval = iota
-	Year
-	Month
-	Day
-)
-
-var Intervals = []Interval{All, Day, Month, Year}
-
-var iToFmt = map[Interval]string{
-	Year:  "2006",
-	Month: "2006-01",
-	Day:   "2006-01-02",
-}
-
-func fmtTime(i Interval, t time.Time) string {
-	if i == All {
-		return ""
-	}
-	return t.Format(iToFmt[i])
-}
-
-func newPool(addr string) *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:     3,
-		IdleTimeout: 240 * time.Second,
-		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
-	}
-}
-
 var (
-	pool       *redis.Pool
 	serverName = "Broxy (+https://github.com/tsileo/broxy)"
 )
 
@@ -197,17 +163,10 @@ func (p *Proxy) reset() error {
 	return nil
 }
 
-func (p *Proxy) appStats(i Interval) ([]*stats, error) {
+func (p *Proxy) appStats(i topdb.Interval) ([]*stats, error) {
 	p.Lock()
 	defer p.Unlock()
 	out := []*stats{}
-	for _, app := range p.apps {
-		s, err := app.stats(i)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
 	return out, nil
 }
 
@@ -431,60 +390,8 @@ type stats struct {
 	Name       string   `json:"name"`
 }
 
-func (a *App) stats(interval Interval) (*stats, error) {
-	t := time.Now()
-	hkey := a.cacheKey(interval, t)
-	c := pool.Get()
-	defer c.Close()
-	values, err := redis.Values(c.Do("HGETALL", hkey+":stats"))
-	if err != nil {
-		return nil, err
-	}
-	stats := &stats{ID: a.ID, Name: a.Name}
-	if err := redis.ScanStruct(values, stats); err != nil {
-		return nil, err
-	}
-	// scan slice to get the top
-	values, err = redis.Values(c.Do("ZREVRANGE", hkey+":status", "0", "-1", "WITHSCORES"))
-	if err != nil {
-		return nil, err
-	}
-	stats.TopStatus = topStats{}
-	if err := redis.ScanSlice(values, &stats.TopStatus); err != nil {
-		return nil, err
-	}
-	// Top method
-	values, err = redis.Values(c.Do("ZREVRANGE", hkey+":method", "0", "-1", "WITHSCORES"))
-	if err != nil {
-		return nil, err
-	}
-	stats.TopMethod = topStats{}
-	if err := redis.ScanSlice(values, &stats.TopMethod); err != nil {
-		return nil, err
-	}
-	// Top path
-	values, err = redis.Values(c.Do("ZREVRANGE", hkey+":path", "0", "-1", "WITHSCORES"))
-	if err != nil {
-		return nil, err
-	}
-	stats.TopPath = topStats{}
-	if err := redis.ScanSlice(values, &stats.TopPath); err != nil {
-		return nil, err
-	}
-	// Top Referer
-	values, err = redis.Values(c.Do("ZREVRANGE", hkey+":referer", "0", "-1", "WITHSCORES"))
-	if err != nil {
-		return nil, err
-	}
-	stats.TopReferer = topStats{}
-	if err := redis.ScanSlice(values, &stats.TopReferer); err != nil {
-		return nil, err
-	}
-	return stats, nil
-}
-
-func (a *App) cacheKey(interval Interval, t time.Time) string {
-	return fmt.Sprintf("app:%s:%d:%s", a.ID, interval, fmtTime(interval, t))
+func (a *App) stats(interval topdb.Interval) (*stats, error) {
+	return &stats{}, nil
 }
 
 type Cache struct {
@@ -668,7 +575,7 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		stats, err := app.stats(All)
+		stats, err := app.stats(topdb.All)
 		if err != nil {
 			panic(err)
 		}
@@ -1007,7 +914,6 @@ func adminAuthMiddleware(next http.Handler, conf *broxyConfig) http.Handler {
 
 func main() {
 	// TODO(tsileo): handle the config of the proxy
-	pool = newPool(":6379")
 	conf, err := loadBroxyConfig("broxy.yaml")
 	if err != nil {
 		panic(err)
@@ -1057,12 +963,6 @@ func main() {
 	go p.authDefender.CleanupTask(q1)
 	q2 := make(chan struct{})
 	go p.defender.CleanupTask(q2)
-
-	con := pool.Get()
-	if _, err := con.Do("PING"); err != nil {
-		panic(err)
-	}
-	con.Close()
 
 	// Bind to the NotFoundHandler to catch all the requests
 	// TODO(tsileo): make the rate limit configurable
