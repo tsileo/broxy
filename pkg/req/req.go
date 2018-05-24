@@ -7,19 +7,25 @@ import (
 
 // Req holds the request/response info for a Broxy request
 type Req struct {
-	AppID      string `json:"appid"`
-	RemoteAddr string `json:"remote_addr"`
-	UserAgent  string `json:"user_agent"`
-	Method     string `json:"method"`
-	Host       string `json:"host"`
-	URL        string `json:"url"`
-	Status     int    `json:"status"`
-	Referer    string `json:"referer"`
-	RespTime   string `json:"resp_time"`
-	RespSize   int    `json:"resp_size"`
-	Time       string `json:"time"`
-	Proto      string `json:"proto"`
-	Username   string `json:"username"`
+	AppID            string `json:"appid"`
+	RemoteAddr       string `json:"remote_addr"`
+	UserAgent        string `json:"user_agent"`
+	Method           string `json:"method"`
+	Host             string `json:"host"`
+	URL              string `json:"url"`
+	Status           int    `json:"status"`
+	Referer          string `json:"referer"`
+	RespTime         string `json:"resp_time"`
+	RespSize         int    `json:"resp_size"`
+	Time             string `json:"time"`
+	Proto            string `json:"proto"`
+	Username         string `json:"username"`
+	GeoIPCountry     string `json:"geoip_country,omitempty"`
+	GeoIPCountryCode string `json:"geoip_country_code,omitempty"`
+	GeoIPRegion      string `json:"geoip_region,omitempty"`
+	GeoIPRegionCode  string `json:"geoip_region_code,omitempty"`
+	GeoIPCity        string `json:"geoip_city,omitempty"`
+	GeoIPLatLong     string `json:"geoip_lat_long"`
 }
 
 // ApacheFmt returns the request formatted in the Apache Combined Log Format

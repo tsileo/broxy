@@ -4,7 +4,11 @@
 [[projects]]
   branch = "master"
   name = "a4.io/blobstash"
-  packages = ["pkg/apps/luautil"]
+  packages = [
+    "pkg/apps/luautil",
+    "pkg/docstore/id",
+    "pkg/rangedb"
+  ]
   revision = "50818ef6c9f312492bd87f23993cb99e0d4b6df9"
 
 [[projects]]
@@ -32,6 +36,58 @@
   revision = "f058f26f891ffe0e17591aadb209d9312836c2e8"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/cznic/fileutil"
+  packages = ["."]
+  revision = "6a051e75936f623600b67c2b1116b6b6c0ffb936"
+
+[[projects]]
+  name = "github.com/cznic/internal"
+  packages = [
+    "buffer",
+    "file",
+    "slice"
+  ]
+  revision = "cef02a853c3a93623c42eacd574e7ea05f55531b"
+  version = "1.0.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/cznic/kv"
+  packages = ["."]
+  revision = "892ccf731fb7aa5e9aa300eb24456d1519afcfc7"
+
+[[projects]]
+  name = "github.com/cznic/lldb"
+  packages = ["."]
+  revision = "bea8611dd5c407f3c5eab9f9c68e887a27dc6f0e"
+  version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/cznic/mathutil"
+  packages = ["."]
+  revision = "ca4c9f2c136954238c3158b92de72078c7672ecc"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/cznic/sortutil"
+  packages = ["."]
+  revision = "4c7342852e65c2088c981288f2c5610d10b9f7f4"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/cznic/zappy"
+  packages = ["."]
+  revision = "2533cb5b45cc6c07421468ce262899ddc9d53fb7"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/edsrzf/mmap-go"
+  packages = ["."]
+  revision = "0bce6a6887123b67a60366d2c9fe2dfb74289d2e"
+
+[[projects]]
   name = "github.com/garyburd/redigo"
   packages = [
     "internal",
@@ -54,6 +110,12 @@
   ]
   revision = "061d51a604c546b48e92253cb65190d76cecf4c6"
   version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/golang/protobuf"
+  packages = ["proto"]
+  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"
@@ -101,6 +163,18 @@
   version = "v0.0.2"
 
 [[projects]]
+  name = "github.com/oschwald/geoip2-golang"
+  packages = ["."]
+  revision = "7118115686e16b77967cdbf55d1b944fe14ad312"
+  version = "v1.2.1"
+
+[[projects]]
+  name = "github.com/oschwald/maxminddb-golang"
+  packages = ["."]
+  revision = "c5bec84d1963260297932a1b7a1753c8420717a7"
+  version = "v1.3.0"
+
+[[projects]]
   name = "github.com/patrickmn/go-cache"
   packages = ["."]
   revision = "a3647f8e31d79543b2d0f0ae2fe5c379d72cedc0"
@@ -123,6 +197,15 @@
   name = "github.com/tsileo/defender"
   packages = ["."]
   revision = "959b6fc6dbd04c3e5ef59bf48272323469e132ed"
+
+[[projects]]
+  name = "github.com/vmihailenco/msgpack"
+  packages = [
+    ".",
+    "codes"
+  ]
+  revision = "6ab02c0ddf38d837488a746aa8709f6ecffc2fde"
+  version = "v3.3.2"
 
 [[projects]]
   branch = "master"
@@ -157,6 +240,15 @@
   revision = "9ef9f5bb98a1fdc41f8cf6c250a4404b4085e389"
 
 [[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = [
+    "unix",
+    "windows"
+  ]
+  revision = "77b0e4315053a57ed2962443614bdb28db152054"
+
+[[projects]]
   name = "golang.org/x/text"
   packages = [
     "encoding",
@@ -175,6 +267,22 @@
   revision = "fbb02b2291d28baffd63558aa44b4b56f178d650"
 
 [[projects]]
+  name = "google.golang.org/appengine"
+  packages = [
+    ".",
+    "datastore",
+    "internal",
+    "internal/app_identity",
+    "internal/base",
+    "internal/datastore",
+    "internal/log",
+    "internal/modules",
+    "internal/remote_api"
+  ]
+  revision = "150dc57a1b433e64154302bdc40b6bb8aefa313a"
+  version = "v1.0.0"
+
+[[projects]]
   name = "gopkg.in/yaml.v2"
   packages = ["."]
   revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
@@ -183,6 +291,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "895fcc787d4bf55d1ff8e7811b8be00de00d23eec8455d034cbe9843e1897a55"
+  inputs-digest = "76681239e5e3dd290abc407ea183d4b3c2b87ebcdcb2623eeded045deebc64d5"
   solver-name = "gps-cdcl"
   solver-version = 1

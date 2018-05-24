@@ -29,6 +29,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"github.com/lestrrat-go/file-rotatelogs"
+	geoip2 "github.com/oschwald/geoip2-golang"
 	"github.com/patrickmn/go-cache"
 	"github.com/tsileo/broxy/pkg/req"
 	"github.com/tsileo/defender"
@@ -145,6 +146,8 @@ type Proxy struct {
 	conf      *broxyConfig
 	apps      map[string]*App
 	hostIndex map[string]*App
+
+	geoIPDB *geoip2.Reader
 
 	// Some stats
 	startedAt time.Time
@@ -371,6 +374,9 @@ func (app *App) init(p *Proxy) error {
 			req.Header.Set("Broxy-Req-Host", req.URL.Host)
 			req.Header.Set("Broxy-Req-Scheme", req.URL.Scheme)
 			req.Header.Set("Broxy-Req-Path", req.URL.Path)
+			remoteAddr := strings.Split(req.RemoteAddr, ":")[0]
+			req.Header.Set("X-Real-IP", remoteAddr)
+			// TODO(tsileo): add Broxy-Geoip-Country...
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host
 			req.URL.Path = singleJoiningSlash(target.Path, req.URL.Path)
@@ -909,6 +915,13 @@ func (rw *responseWriter) WriteHeader(header int) {
 		}
 	}
 
+	// FIXME(tsileo): delete Broxy-Control- header
+	//for k, _ := range rw.rw.Header() {
+	//	if strings.HasPrefix(strings.ToLower(k), "broxy-control-") {
+	//		rw.rw.Header().Del(k)
+	//	}
+	//}
+
 	// Save the status
 	rw.status = header
 
@@ -925,11 +938,12 @@ type reqStats struct {
 }
 
 type broxyConfig struct {
-	AutoTLS     bool                `yaml:"auto_tls"`
-	Listen      string              `yaml:"listen"`
-	Apps        []*App              `yaml:"apps"`
-	ExposeAdmin *exposeDomainConfig `yaml:"expose_admin"`
-	LogsDir     string              `yaml:"logs_dir"`
+	AutoTLS        bool                `yaml:"auto_tls"`
+	Listen         string              `yaml:"listen"`
+	Apps           []*App              `yaml:"apps"`
+	ExposeAdmin    *exposeDomainConfig `yaml:"expose_admin"`
+	LogsDir        string              `yaml:"logs_dir"`
+	MaxmindGeoIPDB string              `yaml:"maxmind_geoip_db"`
 }
 
 type exposeDomainConfig struct {
@@ -992,6 +1006,13 @@ func main() {
 		defender: defender.New(15000, 300*time.Second, 12*60*time.Minute),
 		conf:     conf,
 	}
+	if conf.MaxmindGeoIPDB != "" {
+		p.geoIPDB, err = geoip2.Open(conf.MaxmindGeoIPDB)
+		if err != nil {
+			panic(err)
+		}
+
+	}
 	p.adminMux = mux.NewRouter()
 	p.adminMux.Handle("/pageviews", p.sse)
 	p.adminMux.HandleFunc("/reload", p.apiReloadHandler)
@@ -1043,6 +1064,7 @@ func main() {
 		host := r.Host
 		ourl := r.URL.String()
 		// FIXME(tsileo): only one config file
+
 		referer := ""
 		if oreferer := r.Header.Get("Referer"); oreferer != "" {
 			uref, err := url.Parse(oreferer)
@@ -1064,98 +1086,66 @@ func main() {
 		p.reqs++
 		p.Unlock()
 
-		var authSucceed bool
+		duration := time.Since(start)
+		// TODO(tsileo): improve logging format
+		// FIXME(tsileo): put this in a middleware
+		remoteAddr := strings.Split(r.RemoteAddr, ":")[0]
 
-		defer func() {
-			cached := w.Header().Get("X-Cache")
-			if cached == "" {
-				cached = "NOCACHE"
-			}
+		username, _, _ := r.BasicAuth()
+		ereq := &req.Req{
+			AppID:      app.ID,
+			RemoteAddr: remoteAddr,
+			Proto:      r.Proto,
+			UserAgent:  ua,
+			Method:     r.Method,
+			Host:       host,
+			URL:        ourl,
+			Status:     w.status,
+			Referer:    referer,
+			RespTime:   duration.String(),
+			RespSize:   w.written,
+			Time:       start.Format(time.RFC3339),
+			Username:   username,
+		}
 
-			// stats handling
-			c := pool.Get()
-			defer c.Close()
-			t := time.Now().UTC()
-			c.Send("MULTI")
-
-			// FIXME(tsileo): move this elsewhere
-			c.Send("SADD", "apps", app.ID)
-
-			for _, interval := range Intervals {
-				hkey := app.cacheKey(interval, t)
-				// Basic stats
-				statsKey := hkey + ":stats"
-				c.Send("HINCRBY", statsKey, "written", w.written)
-				c.Send("HINCRBY", statsKey, "reqs", 1)
-				// TODO(tsileo): other metrics?
-
-				// Cache stats
-				switch cached {
-				case "HIT":
-					c.Send("HINCRBY", statsKey, "cache:hit", 1)
-					c.Send("HINCRBY", statsKey, "cache:total", 1)
-				case "MISS":
-					c.Send("HINCRBY", statsKey, "cache:miss", 1)
-					c.Send("HINCRBY", statsKey, "cache:total", 1)
-				}
-
-				if !app.AuthEmpty() {
-					if authSucceed {
-						c.Send("HINCRBY", statsKey, "auth:success", 1)
-						c.Send("ZADD", hkey+":auth:log:success", t, r.RemoteAddr)
-					} else {
-						c.Send("HINCRBY", statsKey, "auth:fail", 1)
-						c.Send("ZADD", hkey+":auth:log:fail", t, r.RemoteAddr)
-					}
-				}
-
-				// Increment the various tops
-				c.Send("ZINCRBY", hkey+":status", 1, w.status)
-				c.Send("ZINCRBY", hkey+":method", 1, r.Method)
-				c.Send("ZINCRBY", hkey+":path", 1, r.URL.Path)
-				if referer != "" {
-					c.Send("ZINCRBY", hkey+":referer", 1, referer)
-				}
-				// XXX(tsileo): track the country with freegeoip embedded?
-				// XXX(tsileo): track mobile/desktop share (via the user agent)?
-			}
-			if _, err := c.Do("EXEC"); err != nil {
-				panic(err)
-			}
-
-			duration := time.Since(start)
-			// TODO(tsileo): improve logging format
-			// FIXME(tsileo): put this in a middleware
-			remoteAddr := strings.Split(r.RemoteAddr, ":")[0]
-			username, _, _ := r.BasicAuth()
-			ereq := &req.Req{
-				AppID:      app.ID,
-				RemoteAddr: remoteAddr,
-				Proto:      r.Proto,
-				UserAgent:  ua,
-				Method:     r.Method,
-				Host:       host,
-				URL:        ourl,
-				Status:     w.status,
-				Referer:    referer,
-				RespTime:   duration.String(),
-				RespSize:   w.written,
-				Time:       start.Format(time.RFC3339),
-				Username:   username,
-			}
-			if username == "" {
-				username = "-"
-			}
-			// TODO(tsileo): write to a special log file for each appid (without the appid/duration, or optioal?), create broxy-tail that uses this format
-			app.log.Write([]byte("req - " + ereq.ApacheFmt()))
-			fmt.Printf("req - %s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
-				w.status, w.written, referer, ua, app.ID, duration)
-			evt, err := json.Marshal(ereq)
+		if app.p.geoIPDB != nil {
+			city, err := app.p.geoIPDB.City(net.ParseIP(remoteAddr))
 			if err != nil {
 				panic(err)
 			}
-			p.sse.Publish(app.ID, evt)
-		}()
+			if city.City.GeoNameID != 0 {
+				ereq.GeoIPCity = city.City.Names["en"]
+				ereq.GeoIPCountry = city.Country.Names["en"]
+				ereq.GeoIPCountryCode = city.Country.IsoCode
+				ereq.GeoIPRegion = city.Subdivisions[0].Names["en"]
+				ereq.GeoIPRegionCode = city.Subdivisions[0].IsoCode
+				ereq.GeoIPLatLong = fmt.Sprintf("%v,%v", city.Location.Latitude, city.Location.Longitude)
+
+				// If the proxy is enabled, add the geoip in the request header
+				if app.rproxy != nil {
+					r.Header.Add("Broxy-GeoIP-City", ereq.GeoIPCity)
+					r.Header.Add("Broxy-GeoIP-Country", ereq.GeoIPCountry)
+					r.Header.Add("Broxy-GeoIP-Country-Code", ereq.GeoIPCountryCode)
+					r.Header.Add("Broxy-GeoIP-Region", ereq.GeoIPRegion)
+					r.Header.Add("Broxy-GeoIP-Region-Code", ereq.GeoIPRegionCode)
+					r.Header.Add("Broxy-GeoIP-Lat-Long", ereq.GeoIPLatLong)
+				}
+			}
+		}
+
+		if username == "" {
+			username = "-"
+		}
+		// TODO(tsileo): write to a special log file for each appid (without the appid/duration, or optioal?), create broxy-tail that uses this format
+		app.log.Write([]byte("req - " + ereq.ApacheFmt()))
+		fmt.Printf("req - %s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
+			w.status, w.written, referer, ua, app.ID, duration)
+		evt, err := json.Marshal(ereq)
+		if err != nil {
+			panic(err)
+		}
+		p.sse.Publish(app.ID, evt)
+		//	}()
 
 		if client, ok := p.defender.Client(r.RemoteAddr); ok && client.Banned() {
 			w.WriteHeader(http.StatusForbidden)
@@ -1174,9 +1164,9 @@ func main() {
 			return
 		}
 
-		if app.authFunc(r) {
-			authSucceed = true
-		} else {
+		if !app.authFunc(r) {
+			//	authSucceed = true
+			//} else {
 			// Check for brute force
 			if banned := p.authDefender.Inc(r.RemoteAddr); banned {
 				// FIXME(tsileo): log the ban in redis
@@ -1242,6 +1232,9 @@ func main() {
 
 		// proxy handling
 		app.rproxy.ServeHTTP(w, r)
+		// TODO(tsileo): parse the response header to log custom event with a custom response writer?
+		// also allow cache purging
+		fmt.Printf("proxy response header %+v\n", w.Header())
 		return
 
 	}))
