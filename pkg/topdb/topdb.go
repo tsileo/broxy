@@ -35,6 +35,7 @@ var (
 	TopHost       = "host"
 	TopStatus     = "status"
 	TopDuration   = "duration"
+	TopPathStatus = "pathstatus"
 )
 
 var (

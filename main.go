@@ -1111,6 +1111,9 @@ func main() {
 		if err := app.tdb.IncrAll(start, topdb.TopPageview, topdb.App, 1); err != nil {
 			panic(err)
 		}
+		if err := app.tdb.IncrAll(start, topdb.TopPathStatus, fmt.Sprintf("%s#%d", r.URL.Path, w.status), 1); err != nil {
+			panic(err)
+		}
 		if err := app.tdb.IncrAll(start, topdb.TopPageview, r.URL.Path, 1); err != nil {
 			panic(err)
 		}
