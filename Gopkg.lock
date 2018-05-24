@@ -32,164 +32,6 @@
   revision = "f058f26f891ffe0e17591aadb209d9312836c2e8"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/Azure/go-ansiterm"
-  packages = [
-    ".",
-    "winterm"
-  ]
-  revision = "d6e3b3328b783f23731bc4d058875b0371ff8109"
-
-[[projects]]
-  name = "github.com/Microsoft/go-winio"
-  packages = ["."]
-  revision = "7da180ee92d8bd8bb8c37fc560e673e6557c392f"
-  version = "v0.4.7"
-
-[[projects]]
-  name = "github.com/Sirupsen/logrus"
-  packages = ["."]
-  revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
-  version = "v1.0.5"
-
-[[projects]]
-  name = "github.com/docker/distribution"
-  packages = [
-    ".",
-    "context",
-    "digest",
-    "reference",
-    "registry/api/errcode",
-    "registry/api/v2",
-    "registry/client",
-    "registry/client/auth",
-    "registry/client/auth/challenge",
-    "registry/client/transport",
-    "registry/storage/cache",
-    "registry/storage/cache/memory",
-    "uuid"
-  ]
-  revision = "48294d928ced5dd9b378f7fd7c6f5da3ff3f2c89"
-  version = "v2.6.2"
-
-[[projects]]
-  name = "github.com/docker/docker"
-  packages = [
-    "api/types",
-    "api/types/backend",
-    "api/types/blkiodev",
-    "api/types/container",
-    "api/types/events",
-    "api/types/filters",
-    "api/types/mount",
-    "api/types/network",
-    "api/types/reference",
-    "api/types/registry",
-    "api/types/strslice",
-    "api/types/swarm",
-    "api/types/time",
-    "api/types/versions",
-    "api/types/volume",
-    "builder",
-    "builder/dockerignore",
-    "cliconfig",
-    "cliconfig/configfile",
-    "client",
-    "daemon/graphdriver",
-    "image",
-    "image/v1",
-    "layer",
-    "oci",
-    "opts",
-    "pkg/archive",
-    "pkg/chrootarchive",
-    "pkg/fileutils",
-    "pkg/gitutils",
-    "pkg/homedir",
-    "pkg/httputils",
-    "pkg/idtools",
-    "pkg/ioutils",
-    "pkg/jsonlog",
-    "pkg/jsonmessage",
-    "pkg/longpath",
-    "pkg/mount",
-    "pkg/plugingetter",
-    "pkg/plugins",
-    "pkg/plugins/transport",
-    "pkg/pools",
-    "pkg/progress",
-    "pkg/promise",
-    "pkg/random",
-    "pkg/reexec",
-    "pkg/signal",
-    "pkg/stdcopy",
-    "pkg/streamformatter",
-    "pkg/stringid",
-    "pkg/symlink",
-    "pkg/system",
-    "pkg/tarsum",
-    "pkg/term",
-    "pkg/term/windows",
-    "pkg/tlsconfig",
-    "pkg/urlutil",
-    "plugin/v2",
-    "reference",
-    "registry",
-    "runconfig/opts"
-  ]
-  revision = "092cba3727bb9b4a2f0e922cd6c0f93ea270e363"
-  version = "v1.13.1"
-
-[[projects]]
-  name = "github.com/docker/go-connections"
-  packages = [
-    "nat",
-    "sockets",
-    "tlsconfig"
-  ]
-  revision = "3ede32e2033de7505e6500d6c868c2b9ed9f169d"
-  version = "v0.3.0"
-
-[[projects]]
-  name = "github.com/docker/go-units"
-  packages = ["."]
-  revision = "47565b4f722fb6ceae66b95f853feed578a4a51c"
-  version = "v0.3.3"
-
-[[projects]]
-  name = "github.com/docker/libcompose"
-  packages = [
-    "config",
-    "docker",
-    "docker/auth",
-    "docker/builder",
-    "docker/client",
-    "docker/container",
-    "docker/ctx",
-    "docker/image",
-    "docker/network",
-    "docker/service",
-    "docker/volume",
-    "labels",
-    "logger",
-    "lookup",
-    "project",
-    "project/events",
-    "project/options",
-    "utils",
-    "version",
-    "yaml"
-  ]
-  revision = "7c59e343cd9d1f3f5577b5bfb71f6486beb4c006"
-  version = "v0.4.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/flynn/go-shlex"
-  packages = ["."]
-  revision = "3f9db97f856818214da2e1057f8ad84803971cff"
-
-[[projects]]
   name = "github.com/garyburd/redigo"
   packages = [
     "internal",
@@ -232,16 +74,19 @@
   version = "v1.6.2"
 
 [[projects]]
+  branch = "master"
   name = "github.com/lestrrat-go/file-rotatelogs"
-  packages = ["."]
-  revision = "9df8b44f21785240553882138c5df2e9cc1db910"
-  version = "v2.1.0"
+  packages = [
+    ".",
+    "internal/option"
+  ]
+  revision = "81893a53aa4f78667bfe43dc2e966f5ba894383c"
 
 [[projects]]
   branch = "master"
-  name = "github.com/lestrrat/go-strftime"
+  name = "github.com/lestrrat-go/strftime"
   packages = ["."]
-  revision = "ba3bf9c1d0421aa146564a632931730344f1f9f1"
+  revision = "59966ecb6d84ec0010de6a5b8deae0299ce5b549"
 
 [[projects]]
   branch = "master"
@@ -254,23 +99,6 @@
   packages = ["."]
   revision = "9e777a8366cce605130a531d2cd6363d07ad7317"
   version = "v0.0.2"
-
-[[projects]]
-  name = "github.com/opencontainers/runc"
-  packages = [
-    "libcontainer/configs",
-    "libcontainer/devices",
-    "libcontainer/system",
-    "libcontainer/user"
-  ]
-  revision = "baf6536d6259209c3edfa2b22237af82942d3dfa"
-  version = "v0.1.1"
-
-[[projects]]
-  name = "github.com/opencontainers/runtime-spec"
-  packages = ["specs-go"]
-  revision = "4e3b9264a330d094b0386c3703c5f379119711e8"
-  version = "v1.0.1"
 
 [[projects]]
   name = "github.com/patrickmn/go-cache"
@@ -291,44 +119,10 @@
   revision = "bb80ad41aae697b9c1a4213ab0c4f500cfbf659b"
 
 [[projects]]
-  name = "github.com/spf13/pflag"
-  packages = ["."]
-  revision = "583c0c0531f06d5278b7d917446061adc344b5cd"
-  version = "v1.0.1"
-
-[[projects]]
   branch = "master"
   name = "github.com/tsileo/defender"
   packages = ["."]
   revision = "959b6fc6dbd04c3e5ef59bf48272323469e132ed"
-
-[[projects]]
-  name = "github.com/vbatts/tar-split"
-  packages = [
-    "archive/tar",
-    "tar/asm",
-    "tar/storage"
-  ]
-  revision = "38ec4ddb06dedbea0a895c4848b248eb38af221b"
-  version = "v0.10.2"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/xeipuuv/gojsonpointer"
-  packages = ["."]
-  revision = "4e3ac2762d5f479393488629ee9370b50873b3a6"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/xeipuuv/gojsonreference"
-  packages = ["."]
-  revision = "bd5ef7bd5415a7ac448318e64f11a24cd21e594b"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/xeipuuv/gojsonschema"
-  packages = ["."]
-  revision = "2c8e4be869c17540b336bab0ea18b8d73e6a28b7"
 
 [[projects]]
   branch = "master"
@@ -352,30 +146,15 @@
   name = "golang.org/x/crypto"
   packages = [
     "acme",
-    "acme/autocert",
-    "ssh/terminal"
+    "acme/autocert"
   ]
   revision = "75e913eb8a8e3d31a97b216de09de106a7b07681"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = [
-    "context",
-    "context/ctxhttp",
-    "internal/socks",
-    "proxy"
-  ]
+  packages = ["context"]
   revision = "9ef9f5bb98a1fdc41f8cf6c250a4404b4085e389"
-
-[[projects]]
-  branch = "master"
-  name = "golang.org/x/sys"
-  packages = [
-    "unix",
-    "windows"
-  ]
-  revision = "77b0e4315053a57ed2962443614bdb28db152054"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -404,6 +183,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "26f9b3c574d18c14a170ed8f9bfa02a8a09316c24c1dfd98ed561a652c5dbc1e"
+  inputs-digest = "895fcc787d4bf55d1ff8e7811b8be00de00d23eec8455d034cbe9843e1897a55"
   solver-name = "gps-cdcl"
   solver-version = 1

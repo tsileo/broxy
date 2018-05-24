@@ -26,9 +26,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/libcompose/docker"
-	"github.com/docker/libcompose/docker/ctx"
-	"github.com/docker/libcompose/project"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"github.com/lestrrat-go/file-rotatelogs"
@@ -680,30 +677,31 @@ func (p *Proxy) apiAppDockerComposeHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		var infos project.InfoSet
-		if app.DockerComposeFile != "" {
-			pctx := project.Context{
-				ComposeFiles: []string{app.DockerComposeFile},
-			}
-			if app.DockerComposeProject != "" {
-				pctx.ProjectName = app.DockerComposeProject
-			}
-			project, err := docker.NewProject(&ctx.Context{
-				Context: pctx,
-			}, nil)
-			if err != nil {
-				panic(err)
-			}
+		// var infos project.InfoSet
+		// if app.DockerComposeFile != "" {
+		//	pctx := project.Context{
+		//		ComposeFiles: []string{app.DockerComposeFile},
+		//	}
+		//	if app.DockerComposeProject != "" {
+		//		pctx.ProjectName = app.DockerComposeProject
+		//	}
+		//	project, err := docker.NewProject(&ctx.Context{
+		//		Context: pctx,
+		//	}, nil)
+		//	if err != nil {
+		//		panic(err)
+		//	}
 
-			infos, err = project.Ps(context.Background())
-			if err != nil {
-				panic(err)
-			}
-			// TODO(tsileo): un-capitalize the keys
-		}
+		//	infos, err = project.Ps(context.Background())
+		//	if err != nil {
+		//		panic(err)
+		//	}
+		//	// TODO(tsileo): un-capitalize the keys
+		//}
 
 		if err := json.NewEncoder(w).Encode(map[string]interface{}{
-			"ps": infos,
+			"appid": app.ID,
+			"ps":    nil,
 		}); err != nil {
 			panic(err)
 		}

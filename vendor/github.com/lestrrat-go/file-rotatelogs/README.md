@@ -1,12 +1,12 @@
-go-file-rotatelogs
+file-rotatelogs
 ==================
 
-[![Build Status](https://travis-ci.org/lestrrat/go-file-rotatelogs.png?branch=master)](https://travis-ci.org/lestrrat/go-file-rotatelogs)
+Periodically rotates log files from within the application. Port of [File::RotateLogs](https://metacpan.org/release/File-RotateLogs) from Perl to Go.
 
-[![GoDoc](https://godoc.org/github.com/lestrrat/go-file-rotatelogs?status.svg)](https://godoc.org/github.com/lestrrat/go-file-rotatelogs)
+[![Build Status](https://travis-ci.org/lestrrat-go/file-rotatelogs.png?branch=master)](https://travis-ci.org/lestrrat-go/file-rotatelogs)
 
+[![GoDoc](https://godoc.org/github.com/lestrrat-go/file-rotatelogs?status.svg)](https://godoc.org/github.com/lestrrat-go/file-rotatelogs)
 
-Port of [File::RotateLogs](https://metacpan.org/release/File-RotateLogs) from Perl to Go.
 
 # SYNOPSIS
 
@@ -15,8 +15,8 @@ import (
   "log"
   "net/http"
 
-  apachelog "github.com/lestrrat/go-apache-logformat"
-  rotatelogs "github.com/lestrrat/go-file-rotatelogs"
+  apachelog "github.com/lestrrat-go/apache-logformat"
+  rotatelogs "github.com/lestrrat-go/file-rotatelogs"
 )
 
 func main() {
@@ -47,21 +47,21 @@ to setup logrotate!
 To install, simply issue a `go get`:
 
 ```
-go get github.com/lestrrat/go-file-rotatelogs
+go get github.com/lestrrat-go/file-rotatelogs
 ```
 
 It's normally expected that this library is used with some other
 logging service, such as the built-in `log` library, or loggers
-such as `github.com/lestrrat/go-apache-logformat`.
+such as `github.com/lestrrat-go/apache-logformat`.
 
 ```go
 import(
   "log"
-  "github.com/lestrrat/go-file-rotatelogs"
+  "github.com/lestrrat-go/file-rotatelogs"
 )
   
 func main() {
-  rl, _ := rotatelogs.NewRotateLogs("/path/to/access_log.%Y%m%d%H%M")
+  rl, _ := rotatelogs.New("/path/to/access_log.%Y%m%d%H%M")
 
   log.SetOutput(rl)
 
@@ -148,3 +148,43 @@ Note: Remember to use time.Duration values.
     rotatelogs.WithMaxAge(time.Hour),
   )
 ```
+
+## RotationCount (default: -1)
+
+The number of files should be kept. By default, this option is disabled.
+
+Note: MaxAge should be disabled by specifing `WithMaxAge(-1)` explicitly.
+
+```go
+  // Purge logs except latest 7 files
+  rotatelogs.New(
+    "/var/log/myapp/log.%Y%m%d",
+    rotatelogs.WithMaxAge(-1),
+    rotatelogs.WithRotationCount(7),
+  )
+```
+
+# Rotating files forcefully
+
+If you want to rotate files forcefully before the actual rotation time has reached,
+you may use the `Rotate()` method. This method forcefully rotates the logs, but
+if the generated file name clashes, then a numeric suffix is added so that
+the new file will forcefully appear on disk.
+
+For example, suppose you had a pattern of '%Y.log' with a rotation time of
+`86400` so that it only gets rotated every year, but for whatever reason you
+wanted to rotate the logs now, you could install a signal handler to
+trigger this rotation:
+
+```go
+rl := rotatelogs.New(...)
+
+signal.Notify(ch, syscall.SIGHUP)
+
+go func(ch chan os.Signal) {
+  <-ch
+  rl.Rotate()
+}()
+```
+
+And you will get a log file name in like `2018.log.1`, `2018.log.2`, etc.
