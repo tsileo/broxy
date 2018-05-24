@@ -10,6 +10,11 @@ import (
 	"github.com/vmihailenco/msgpack"
 )
 
+var (
+	EventAppStart    = "app_start"
+	EventAppShutdown = "app_shutdown"
+)
+
 type EventsDB struct {
 	rdb *rangedb.RangeDB
 }

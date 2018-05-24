@@ -273,6 +273,8 @@ func (app *App) cleanup() error {
 	if app.syslogShutdown != nil {
 		app.syslogShutdown()
 	}
+	app.edb.Add(&eventsdb.Event{Type: eventsdb.EventAppShutdown, Message: "app shutdown"})
+
 	app.edb.Close()
 	app.tdb.Close()
 	return app.log.Close()
@@ -296,6 +298,10 @@ func (app *App) init(p *Proxy) error {
 
 	app.edb, err = eventsdb.New(fmt.Sprintf("./broxy_analytics/%s.events.db", app.ID))
 	if err != nil {
+		return err
+	}
+
+	if err := app.edb.Add(&eventsdb.Event{Type: eventsdb.EventAppStart, Message: "app start"}); err != nil {
 		return err
 	}
 
@@ -585,6 +591,38 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (p *Proxy) apiAppEventsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appid"]
+	if appID == "" {
+		panic("missing appid")
+	}
+	switch r.Method {
+	case "GET":
+		p.Lock()
+		defer p.Unlock()
+		app, ok := p.apps[appID]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		events, _, err := app.edb.List("", 10)
+		if err != nil {
+			panic(err)
+		}
+
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"appid":  app.ID,
+			"events": events,
+		}); err != nil {
+			panic(err)
+		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -953,6 +991,7 @@ func main() {
 	p.adminMux.HandleFunc("/app/{appid}", p.apiAppHandler)
 	p.adminMux.HandleFunc("/app/{appid}/cache", p.apiAppCacheHandler)
 	p.adminMux.HandleFunc("/app/{appid}/docker_compose", p.apiAppDockerComposeHandler)
+	p.adminMux.HandleFunc("/app/{appid}/events", p.apiAppEventsHandler)
 	p.adminMux.HandleFunc("/free_port", p.apiFreePortHandler)
 
 	if err := p.reset(); err != nil {
@@ -973,6 +1012,7 @@ func main() {
 		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
 		amux.Handle("/app/{appid}/cache", adminAuthMiddleware(http.HandlerFunc(p.apiAppCacheHandler), p.conf))
 		amux.Handle("/app/{appid}/docker_compose", adminAuthMiddleware(http.HandlerFunc(p.apiAppDockerComposeHandler), p.conf))
+		amux.Handle("/app/{appid}/events", adminAuthMiddleware(http.HandlerFunc(p.apiAppEventsHandler), p.conf))
 		amux.Handle("/reload", adminAuthMiddleware(http.HandlerFunc(p.apiReloadHandler), p.conf))
 		amux.Handle("/free_port", adminAuthMiddleware(http.HandlerFunc(p.apiFreePortHandler), p.conf))
 	}
