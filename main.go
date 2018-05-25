@@ -1119,7 +1119,7 @@ func main() {
 				}
 			}
 			if title != nil {
-				if err := app.tdb.IncrAll(start, topdb.TopContent, fmt.Sprintf("%s#%s", r.URL.Path, title), 1); err != nil {
+				if err := app.tdb.IncrAll(start, topdb.TopContent, fmt.Sprintf("%s#%s", r.URL.Path, *title), 1); err != nil {
 					panic(err)
 				}
 			}
@@ -1179,9 +1179,9 @@ func main() {
 		// also allow cache purging
 		if strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
 			title = htmlutil.ParseTitle(w.body)
-			fmt.Printf("PAGE! title=%s\n", title)
+			// fmt.Printf("PAGE! title=%s\n", title)
 		}
-		fmt.Printf("proxy response header %+v\n", w.Header())
+		// fmt.Printf("proxy response header %+v\n", w.Header())
 		return
 
 	}))
