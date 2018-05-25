@@ -28,6 +28,7 @@ var iToFmt = map[Interval]string{
 }
 
 var (
+	TopContent    = "content"
 	TopPageview   = "pv"
 	TopReferer    = "referer"
 	TopStatusCode = "status"

@@ -184,12 +184,6 @@
   revision = "bb80ad41aae697b9c1a4213ab0c4f500cfbf659b"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/tsileo/defender"
-  packages = ["."]
-  revision = "959b6fc6dbd04c3e5ef59bf48272323469e132ed"
-
-[[projects]]
   name = "github.com/vmihailenco/msgpack"
   packages = [
     ".",
@@ -227,7 +221,11 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["context"]
+  packages = [
+    "context",
+    "html",
+    "html/atom"
+  ]
   revision = "9ef9f5bb98a1fdc41f8cf6c250a4404b4085e389"
 
 [[projects]]
@@ -250,12 +248,6 @@
   ]
   revision = "f21a4dfb5e38f5895301dc265a8def02365cc3d0"
   version = "v0.3.0"
-
-[[projects]]
-  branch = "master"
-  name = "golang.org/x/time"
-  packages = ["rate"]
-  revision = "fbb02b2291d28baffd63558aa44b4b56f178d650"
 
 [[projects]]
   name = "google.golang.org/appengine"
@@ -282,6 +274,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6f7afe4f6cb6b6c8f7cc1af5c2bbf38e3a6f6f67e80f74f9d72e9819e14012e0"
+  inputs-digest = "6cb59495aa1e317852b514806e3b1c4cb6870dd59a3380979bec8d53491cad21"
   solver-name = "gps-cdcl"
   solver-version = 1
