@@ -30,6 +30,7 @@ import (
 	"github.com/lestrrat-go/file-rotatelogs"
 	geoip2 "github.com/oschwald/geoip2-golang"
 	"github.com/patrickmn/go-cache"
+	"github.com/tsileo/broxy/pkg/dockerutil"
 	"github.com/tsileo/broxy/pkg/eventsdb"
 	"github.com/tsileo/broxy/pkg/req"
 	"github.com/tsileo/broxy/pkg/topdb"
@@ -244,7 +245,6 @@ type App struct {
 	SyslogPort     int `yaml:"syslog_port" json:"syslog_port"`
 	syslogShutdown func()
 
-	DockerComposeFile    string `yaml:"docker_compose_file" json:"-"`
 	DockerComposeProject string `yaml:"docker_compose_project" json:"-"`
 
 	// Move this to `static_files`
@@ -644,31 +644,21 @@ func (p *Proxy) apiAppDockerComposeHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		// var infos project.InfoSet
-		// if app.DockerComposeFile != "" {
-		//	pctx := project.Context{
-		//		ComposeFiles: []string{app.DockerComposeFile},
-		//	}
-		//	if app.DockerComposeProject != "" {
-		//		pctx.ProjectName = app.DockerComposeProject
-		//	}
-		//	project, err := docker.NewProject(&ctx.Context{
-		//		Context: pctx,
-		//	}, nil)
-		//	if err != nil {
-		//		panic(err)
-		//	}
+		var err error
+		res := []map[string]interface{}{}
+		if app.DockerComposeProject != "" {
+			client := dockerutil.New()
+			res, err = client.ListContainers(&dockerutil.ListOps{app.DockerComposeProject})
+			if err != nil {
+				panic(err)
+			}
+		}
 
-		//	infos, err = project.Ps(context.Background())
-		//	if err != nil {
-		//		panic(err)
-		//	}
-		//	// TODO(tsileo): un-capitalize the keys
-		//}
+		//	// TODO(tsileo): un-capitalize the keys in the resp
 
 		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"appid": app.ID,
-			"ps":    nil,
+			"ps":    res,
 		}); err != nil {
 			panic(err)
 		}
