@@ -31,6 +31,7 @@ import (
 	geoip2 "github.com/oschwald/geoip2-golang"
 	"github.com/patrickmn/go-cache"
 	"github.com/tsileo/broxy/pkg/dockerutil"
+	"github.com/tsileo/broxy/pkg/errordb"
 	"github.com/tsileo/broxy/pkg/eventsdb"
 	"github.com/tsileo/broxy/pkg/htmlutil"
 	"github.com/tsileo/broxy/pkg/req"
@@ -267,8 +268,11 @@ type App struct {
 	app       *gluapp.App
 	p         *Proxy
 	log       *rotatelogs.RotateLogs
-	edb       *eventsdb.EventsDB
-	tdb       *topdb.TopDB
+
+	errDB *errordb.ErrorDB
+	logDB *eventsdb.EventsDB
+	edb   *eventsdb.EventsDB
+	tdb   *topdb.TopDB
 }
 
 func (app *App) cleanup() error {
@@ -277,6 +281,8 @@ func (app *App) cleanup() error {
 	}
 	app.edb.Add(&eventsdb.Event{Type: eventsdb.EventAppShutdown, Message: "app shutdown"})
 
+	app.logDB.Close()
+	app.errDB.Close()
 	app.edb.Close()
 	app.tdb.Close()
 	return app.log.Close()
@@ -297,6 +303,16 @@ func (app *App) init(p *Proxy) error {
 		app.static = http.FileServer(http.Dir(app.Path))
 	}
 	var err error
+
+	app.errDB, err = errordb.New(fmt.Sprintf("./broxy_analytics/%s.errors.db", app.ID))
+	if err != nil {
+		return err
+	}
+
+	app.logDB, err = eventsdb.New(fmt.Sprintf("./broxy_analytics/%s.logs.db", app.ID))
+	if err != nil {
+		return err
+	}
 
 	app.edb, err = eventsdb.New(fmt.Sprintf("./broxy_analytics/%s.events.db", app.ID))
 	if err != nil {
@@ -333,6 +349,13 @@ func (app *App) init(p *Proxy) error {
 				logLine = fmt.Sprintf("docker-compose - %s - %s - %s %s \n", parts[1], t, strings.Join(parts[2:], "/"), m.Content)
 			} else {
 				logLine = "syslog - " + m.String() + "\n"
+			}
+			logEvent := &eventsdb.Event{Type: "syslog", Message: m.Content}
+			if err := app.logDB.AddAt(logEvent, m.Time); err != nil {
+				return err
+			}
+			if err := app.errDB.ProcessLogMessage(logEvent.ID.String(), m.Time.Unix(), m.Content); err != nil {
+				return err
 			}
 			app.log.Write([]byte(logLine))
 			fmt.Printf(logLine)
@@ -669,6 +692,35 @@ func (p *Proxy) apiAppDockerComposeHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+func (p *Proxy) apiAppErrorsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appid"]
+	if appID == "" {
+		panic("missing appid")
+	}
+	switch r.Method {
+	case "GET":
+		p.Lock()
+		defer p.Unlock()
+		app, ok := p.apps[appID]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		aes, _, err := app.errDB.List("", -1)
+		if err != nil {
+			panic(err)
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"app_errors": aes,
+		}); err != nil {
+			panic(err)
+		}
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
 func (p *Proxy) apiAppCacheHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	appID := vars["appid"]
@@ -981,6 +1033,7 @@ func main() {
 	p.adminMux.Handle("/pageviews", p.sse)
 	p.adminMux.HandleFunc("/reload", p.apiReloadHandler)
 	p.adminMux.HandleFunc("/app/{appid}", p.apiAppHandler)
+	p.adminMux.HandleFunc("/app/{appid}/errors", p.apiAppErrorsHandler)
 	p.adminMux.HandleFunc("/app/{appid}/cache", p.apiAppCacheHandler)
 	p.adminMux.HandleFunc("/app/{appid}/docker_compose", p.apiAppDockerComposeHandler)
 	p.adminMux.HandleFunc("/app/{appid}/events", p.apiAppEventsHandler)
@@ -997,6 +1050,7 @@ func main() {
 		amux := p.router.Host(conf.ExposeAdmin.Domain).Subrouter()
 		amux.Handle("/pageviews", adminAuthMiddleware(p.sse, p.conf))
 		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
+		amux.Handle("/app/{appid}/errors", adminAuthMiddleware(http.HandlerFunc(p.apiAppErrorsHandler), p.conf))
 		amux.Handle("/app/{appid}/cache", adminAuthMiddleware(http.HandlerFunc(p.apiAppCacheHandler), p.conf))
 		amux.Handle("/app/{appid}/docker_compose", adminAuthMiddleware(http.HandlerFunc(p.apiAppDockerComposeHandler), p.conf))
 		amux.Handle("/app/{appid}/events", adminAuthMiddleware(http.HandlerFunc(p.apiAppEventsHandler), p.conf))
@@ -1086,7 +1140,15 @@ func main() {
 			if username == "" {
 				username = "-"
 			}
-			// TODO(tsileo): write to a special log file for each appid (without the appid/duration, or optioal?), create broxy-tail that uses this format
+			logEventMessage := ereq.ApacheFmt() + fmt.Sprintf(" %s", duration)
+			logEvent := &eventsdb.Event{Type: "req", Message: logEventMessage}
+			if err := app.logDB.AddAt(logEvent, start); err != nil {
+				panic(err)
+			}
+			// FIXME(tsileo): re-enable me once errorDB handle go stack trace with "Broxy internal errDB"??
+			//if err := app.errDB.ProcessLogMessage(logEvent.ID.String(), start.Unix(), logEventMessage); err != nil {
+			//	panic(err)
+			//}
 			app.log.Write([]byte("req - " + ereq.ApacheFmt()))
 			fmt.Printf("req - %s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
 				w.status, w.written, referer, ua, app.ID, duration)

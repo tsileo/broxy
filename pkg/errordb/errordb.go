@@ -16,8 +16,8 @@ var (
 )
 
 var (
-	Python = "py"
-	Golang = "go"
+	Python = "PYTHON"
+	Golang = "GO"
 )
 
 type Occurrence struct {
@@ -101,14 +101,14 @@ func (db *ErrorDB) ProcessLogMessage(logRef string, ts int64, message string) er
 			ID:          eid,
 			FirstSeen:   ts,
 			Occurrences: []*Occurrence{},
-			Status:      "open",
+			Status:      "OPEN",
 		}
 	}
 	cae.LastSeen = ts
 	cae.Occurrences = append(cae.Occurrences, &Occurrence{T: ts, LogRef: logRef})
 	switch cae.Status {
-	case "resolved":
-		cae.Status = "re-opened"
+	case "RESOLVED":
+		cae.Status = "RE_OPENED"
 	}
 
 	data, err := msgpack.Marshal(cae)
