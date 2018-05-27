@@ -110,6 +110,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/golang/snappy"
+  packages = ["."]
+  revision = "2e65f85255dbc3072edf28d6b5b8efc472979f5a"
+
+[[projects]]
+  branch = "master"
   name = "github.com/google/subcommands"
   packages = ["."]
   revision = "a3682377147edf596d303faabd89f81977b3f678"
@@ -274,6 +280,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6cb59495aa1e317852b514806e3b1c4cb6870dd59a3380979bec8d53491cad21"
+  inputs-digest = "69c687288ff2540aa213ba02d1f14d9a3e5201d06376d4387fb853c17f39e2a7"
   solver-name = "gps-cdcl"
   solver-version = 1
