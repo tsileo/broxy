@@ -41,7 +41,16 @@ type Event struct {
 }
 
 func (db *EventsDB) Add(event *Event) error {
-	eid, err := id.New(time.Now().UTC().UnixNano())
+	t := time.Now()
+	return db.addAt(event, t)
+}
+
+func (db *EventsDB) AddAt(event *Event, t time.Time) error {
+	return db.addAt(event, t)
+}
+
+func (db *EventsDB) addAt(event *Event, t time.Time) error {
+	eid, err := id.New(t.UnixNano())
 	if err != nil {
 		return err
 	}
@@ -52,6 +61,7 @@ func (db *EventsDB) Add(event *Event) error {
 	if err := db.rdb.Set(eid.Raw(), snappy.Encode(nil, data)); err != nil {
 		return err
 	}
+	event.ID = eid
 	return nil
 }
 

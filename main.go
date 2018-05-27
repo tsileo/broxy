@@ -54,6 +54,11 @@ var (
 	serverName = "Broxy (+https://github.com/tsileo/broxy)"
 )
 
+var (
+	EventAppStart    = "app_start"
+	EventAppShutdown = "app_shutdown"
+)
+
 var tmpl = template.Must(template.New("main").Parse(`
 <!doctype html><meta charset=utf-8>
 <meta name="go-import" content="{{.ImportPrefix}} {{.VCS}} {{.RepoRoot}}">
