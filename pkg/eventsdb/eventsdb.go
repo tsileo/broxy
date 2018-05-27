@@ -7,6 +7,7 @@ import (
 
 	"a4.io/blobstash/pkg/docstore/id"
 	"a4.io/blobstash/pkg/rangedb"
+	"github.com/golang/snappy"
 	"github.com/vmihailenco/msgpack"
 )
 
@@ -48,7 +49,7 @@ func (db *EventsDB) Add(event *Event) error {
 	if err != nil {
 		return err
 	}
-	if err := db.rdb.Set(eid.Raw(), data); err != nil {
+	if err := db.rdb.Set(eid.Raw(), snappy.Encode(nil, data)); err != nil {
 		return err
 	}
 	return nil
@@ -86,7 +87,11 @@ func (db *EventsDB) List(cursor string, limit int) ([]*Event, string, error) {
 		event := &Event{
 			ID: eid,
 		}
-		if err := msgpack.Unmarshal(v, event); err != nil {
+		data, err := snappy.Decode(nil, v)
+		if err != nil {
+			return nil, "", err
+		}
+		if err := msgpack.Unmarshal(data, event); err != nil {
 			return nil, "", err
 		}
 
