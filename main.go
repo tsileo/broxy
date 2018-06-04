@@ -844,7 +844,11 @@ type Transport struct {
 }
 
 func (t *Transport) cacheKey(req *http.Request) string {
-	return fmt.Sprintf("proxy:%s", req.URL.String())
+	accept := "text/html"
+	if req.Header.Get("Accept") != "" {
+		accept = strings.Split(req.Header.Get("Accept"), ",")[0]
+	}
+	return fmt.Sprintf("proxy:%s:%s", req.URL.String(), accept)
 }
 
 func (t *Transport) FlushCache() {
