@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -66,6 +67,16 @@ var tmpl = template.Must(template.New("main").Parse(`
 <meta http-equiv="refresh" content="0; url=https://godoc.org/{{.URL}}">
 <p>Redirecting to docs at <a href="https://godoc.org/{{.URL}}">godoc.org/{{.URL}}</a>...</p>
 `))
+
+func randomKey() string {
+	c := 10
+	b := make([]byte, c)
+	_, err := rand.Read(b)
+	if err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("%x", b)
+}
 
 // Remote import path config (https://golang.org/cmd/go/#hdr-Remote_import_paths)
 type GoRedirector struct {
@@ -270,9 +281,13 @@ type App struct {
 	log       *rotatelogs.RotateLogs
 
 	errDB *errordb.ErrorDB
-	logDB *eventsdb.EventsDB
-	edb   *eventsdb.EventsDB
-	tdb   *topdb.TopDB
+
+	logDB   *eventsdb.EventsDB
+	logSSE  *server.SSEServer
+	logAuth string
+
+	edb *eventsdb.EventsDB
+	tdb *topdb.TopDB
 }
 
 func (app *App) cleanup() error {
@@ -314,6 +329,10 @@ func (app *App) init(p *Proxy) error {
 		return err
 	}
 
+	app.logSSE = server.New()
+	app.logSSE.Start()
+	app.logAuth = randomKey()
+
 	app.edb, err = eventsdb.New(fmt.Sprintf("./broxy_analytics/%s.events.db", app.ID))
 	if err != nil {
 		return err
@@ -351,6 +370,7 @@ func (app *App) init(p *Proxy) error {
 				logLine = "syslog - " + m.String() + "\n"
 			}
 			logEvent := &eventsdb.Event{Type: "syslog", Message: m.Content}
+			app.logSSE.Publish("log", []byte(logLine[0:len(logLine)-1]+"\r\n"))
 			if err := app.logDB.AddAt(logEvent, m.Time); err != nil {
 				return err
 			}
@@ -621,6 +641,111 @@ func (p *Proxy) apiAppHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (p *Proxy) apiAppTermHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appid"]
+	if appID == "" {
+		panic("missing appid")
+	}
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	p.Lock()
+	app, ok := p.apps[appID]
+	p.Unlock()
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(`
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="x-ua-compatible" content="ie=edge"> <!-- † -->
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<title>Broxy logs</title>
+<link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css" integrity="sha384-nn4HPE8lTHyVtfCBi5yW9d20FjT8BJwUXyWZT9InLYax14RDjBj46LmSztkmNP9w" crossorigin="anonymous">
+<link rel="stylesheet" href="https://unpkg.com/xterm@3.4.1/dist/xterm.css">
+<style>
+html, body, #terminal-container {
+  height: 100%;
+}
+</style>
+</head>
+<body>
+<div id="terminal-container"></div>
+<script src="https://unpkg.com/xterm@3.4.1/dist/xterm.js"></script>
+<script src="https://unpkg.com/xterm@3.4.1/dist/addons/fit/fit.js"></script>
+<script>
+window.onload = function() {
+console.log('loaded');
+Terminal.applyAddon(fit);
+
+var term = new Terminal({
+            cursorBlink: false,
+            tabStopWidth: 4,
+            disableStdin: true,
+            enableBold: false,
+            fontSize: 13,
+            lineHeight: 1,
+            theme: {
+                background: '#151515'
+            }
+});
+
+term.open(document.getElementById('terminal-container'));  // Open the terminal in #terminal-container
+
+term.fit(); 
+var evtSource = new EventSource("/app/blog/term/stream?auth=` + app.logAuth + `");
+evtSource.addEventListener("log", function(e) {
+        console.log(e);
+        term.write(e.data+'\r\n');
+});
+
+}
+</script>
+</body>
+</html>
+	`))
+}
+
+func (p *Proxy) apiAppTermStreamHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appid"]
+	if appID == "" {
+		panic("missing appid")
+	}
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	p.Lock()
+	app, ok := p.apps[appID]
+	p.Unlock()
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if r.URL.Query().Get("auth") != app.logAuth {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	app.logSSE.ServeHTTP(w, r)
+}
+
 func (p *Proxy) apiAppEventsHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	appID := vars["appid"]
@@ -847,6 +972,9 @@ func (t *Transport) cacheKey(req *http.Request) string {
 	accept := "text/html"
 	if req.Header.Get("Accept") != "" {
 		accept = strings.Split(req.Header.Get("Accept"), ",")[0]
+		if accept == "*/*" {
+			accept = "text/html"
+		}
 	}
 	return fmt.Sprintf("proxy:%s:%s", req.URL.String(), accept)
 }
@@ -1038,6 +1166,8 @@ func main() {
 	p.adminMux.HandleFunc("/reload", p.apiReloadHandler)
 	p.adminMux.HandleFunc("/app/{appid}", p.apiAppHandler)
 	p.adminMux.HandleFunc("/app/{appid}/errors", p.apiAppErrorsHandler)
+	p.adminMux.HandleFunc("/app/{appid}/term", p.apiAppTermHandler)
+	p.adminMux.HandleFunc("/app/{appid}/term/stream", p.apiAppTermStreamHandler)
 	p.adminMux.HandleFunc("/app/{appid}/cache", p.apiAppCacheHandler)
 	p.adminMux.HandleFunc("/app/{appid}/docker_compose", p.apiAppDockerComposeHandler)
 	p.adminMux.HandleFunc("/app/{appid}/events", p.apiAppEventsHandler)
@@ -1054,6 +1184,8 @@ func main() {
 		amux := p.router.Host(conf.ExposeAdmin.Domain).Subrouter()
 		amux.Handle("/pageviews", adminAuthMiddleware(p.sse, p.conf))
 		amux.Handle("/app/{appid}", adminAuthMiddleware(http.HandlerFunc(p.apiAppHandler), p.conf))
+		amux.Handle("/app/{appid}/term/stream", http.HandlerFunc(p.apiAppTermStreamHandler))
+		amux.Handle("/app/{appid}/term", adminAuthMiddleware(http.HandlerFunc(p.apiAppTermHandler), p.conf))
 		amux.Handle("/app/{appid}/errors", adminAuthMiddleware(http.HandlerFunc(p.apiAppErrorsHandler), p.conf))
 		amux.Handle("/app/{appid}/cache", adminAuthMiddleware(http.HandlerFunc(p.apiAppCacheHandler), p.conf))
 		amux.Handle("/app/{appid}/docker_compose", adminAuthMiddleware(http.HandlerFunc(p.apiAppDockerComposeHandler), p.conf))
@@ -1154,8 +1286,12 @@ func main() {
 			//	panic(err)
 			//}
 			app.log.Write([]byte("req - " + ereq.ApacheFmt()))
-			fmt.Printf("req - %s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
+			logLine := fmt.Sprintf("req - %s - %s [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" %s %s\n", remoteAddr, username, start.Format("02/Jan/2006 03:04:05"), r.Method, ourl, r.Proto,
 				w.status, w.written, referer, ua, app.ID, duration)
+			fmt.Printf(logLine)
+
+			app.logSSE.Publish("log", []byte(logLine[0:len(logLine)-1]+"\r\n"))
+
 			evt, err := json.Marshal(ereq)
 			if err != nil {
 				panic(err)
