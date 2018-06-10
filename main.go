@@ -1123,9 +1123,10 @@ func adminAuthMiddleware(next http.Handler, conf *broxyConfig) http.Handler {
 		if checkAuth(conf.ExposeAdmin.Auth, r) {
 			next.ServeHTTP(w, r)
 		} else {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Broxy Admin"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
-
+			return
 		}
 	})
 }
