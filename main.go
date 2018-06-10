@@ -700,7 +700,7 @@ var term = new Terminal({
 term.open(document.getElementById('terminal-container'));  // Open the terminal in #terminal-container
 
 term.fit(); 
-var evtSource = new EventSource("/app/blog/term/stream?auth=` + app.logAuth + `");
+var evtSource = new EventSource("/app/` + appID + `/term/stream?auth=` + app.logAuth + `");
 evtSource.addEventListener("log", function(e) {
         console.log(e);
         term.write(e.data+'\r\n');
