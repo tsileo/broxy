@@ -254,7 +254,8 @@ type App struct {
 
 	GoRedirectors goRedirectors `yaml:"go_redirectors" json:"-"`
 
-	Proxy string `yaml:"proxy" json:"proxy"`
+	Proxy           string            `yaml:"proxy" json:"proxy"`
+	ProxyAddHeaders map[string]string `yaml:"proxy_add_headers" json:"proxy_add_headers"`
 
 	SyslogPort     int `yaml:"syslog_port" json:"syslog_port"`
 	syslogShutdown func()
@@ -402,6 +403,11 @@ func (app *App) init(p *Proxy) error {
 			req.Header.Set("Broxy-Req-Path", req.URL.Path)
 			remoteAddr := strings.Split(req.RemoteAddr, ":")[0]
 			req.Header.Set("X-Real-IP", remoteAddr)
+			if app.ProxyAddHeaders != nil {
+				for k, v := range app.ProxyAddHeaders {
+					req.Header.Set(k, v)
+				}
+			}
 			// TODO(tsileo): add Broxy-Geoip-Country...
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host
