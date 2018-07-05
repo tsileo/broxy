@@ -1347,13 +1347,11 @@ func main() {
 			return
 		}
 
-		switch {
-		case app.GoRedirectors != nil:
-			if ok := app.GoRedirectors.CheckAndServe(w, r); ok {
-				break
-			}
+		if ok := app.GoRedirectors.CheckAndServe(w, r); ok {
+			return
+		}
 
-			fallthrough
+		switch {
 		case app.app != nil:
 			// FIXME(tsileo): store a cache.Cache in the app
 			//cacheable := app.Cache.CacheApp && (r.Method == "GET" || r.Method == "HEAD") && r.Header.Get("range") == ""
